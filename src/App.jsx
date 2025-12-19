@@ -19,7 +19,7 @@ const THEMES = {
     primaryHex: '#5F6F52',
     primaryBg: 'bg-[#5F6F52]',
     primaryBorder: 'border-[#5F6F52]',
-    accent: 'text-[#A98467]',
+    accent: 'text-[#A98467]', 
     accentHex: '#A98467',
     hover: 'hover:bg-[#F2F0EB]',
     subText: 'text-[#888888]',
@@ -267,6 +267,23 @@ const formatLastModified = (isoString) => {
   return `${yyyy}/${mm}/${dd} ${HH}:${MM}`;
 };
 
+// --- Excel 日期解析工具 ---
+// 處理 Excel 匯入時可能是 Serial Number (數字) 或是 字串 的日期
+const parseExcelDate = (val) => {
+  if (!val) return new Date().toISOString().split('T')[0];
+  if (typeof val === 'number') {
+      // Excel serial date to JS Date
+      // 25569 is the number of days between 1900-01-01 and 1970-01-01
+      // 86400 * 1000 is milliseconds in a day
+      const date = new Date((val - 25569) * 86400 * 1000);
+      return date.toISOString().split('T')[0];
+  }
+  // Try to parse string "yyyy/mm/dd" or standard format
+  const date = new Date(val);
+  if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+  return val;
+};
+
 // --- 預設範本資料 (Templates) ---
 
 const getDefaultItinerary = () => ({
@@ -430,12 +447,14 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
         const wb = window.XLSX.read(bstr, { type: 'binary' });
 
         // Helper to get sheet data
+        // header: 1 means array of arrays (no key mapping)
         const getSheetData = (sheetName) => {
           const ws = wb.Sheets[sheetName];
-          return ws ? window.XLSX.utils.sheet_to_json(ws, { header: 1 }) : [];
+          return ws ? window.XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) : [];
         };
 
         const sheetNames = wb.SheetNames;
+        // 尋找概覽頁面 (通常是第一個，或者排除其他已知頁面名稱)
         const overviewSheetName = sheetNames.find(n => !['行程表', '行李', '購物', '美食', '費用'].includes(n)) || sheetNames[0];
         const overviewData = getSheetData(overviewSheetName);
         
@@ -458,10 +477,10 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
 
           if (title) newTripSettings.title = title;
           
-          if (startDate) newTripSettings.startDate = startDate;
+          if (startDate) newTripSettings.startDate = parseExcelDate(startDate);
           else newTripSettings.startDate = new Date().toISOString().split('T')[0];
 
-          if (endDate) newTripSettings.endDate = endDate;
+          if (endDate) newTripSettings.endDate = parseExcelDate(endDate);
           else newTripSettings.endDate = newTripSettings.startDate;
 
           newTripSettings.days = calculateDaysDiff(newTripSettings.startDate, newTripSettings.endDate);
@@ -476,30 +495,32 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
         }
 
         // Parse Itinerary
+        // Export Format: Day(0), Time(1), Duration(2), Type(3), Title(4), Location(5), Cost(6), Notes(7)
         const itineraryData = getSheetData("行程表");
         const newItineraries = {};
         if (itineraryData.length > 1) {
+          // Start from index 1 to skip header
           for (let i = 1; i < itineraryData.length; i++) {
             const row = itineraryData[i];
-            if (!row || !row[0]) continue;
+            if (!row || !row[0]) continue; // Skip empty rows
             
             const dayStr = String(row[0]); 
             const dayIndex = parseInt(dayStr.replace("Day ", "")) - 1;
             if (isNaN(dayIndex)) continue; 
             
-            const label = row[4];
+            const label = row[3];
             const typeEntry = Object.entries(ICON_MAP).find(([k, v]) => v.label === label);
             const type = typeEntry ? typeEntry[0] : 'sightseeing';
 
             const item = {
-              id: Date.now() + i,
-              time: row[2] || "09:00",
-              duration: parseInt(row[3]) || 60,
+              id: Date.now() + i, // Generate new unique ID
+              time: row[1] || "09:00",
+              duration: parseInt(row[2]) || 60,
               type: type,
-              title: row[5] || "",
-              location: row[6] || "",
-              cost: parseInt(row[7]) || 0,
-              notes: row[8] || ""
+              title: row[4] || "",
+              location: row[5] || "",
+              cost: parseInt(row[6]) || 0,
+              notes: row[7] || ""
             };
 
             if (!newItineraries[dayIndex]) newItineraries[dayIndex] = [];
@@ -507,6 +528,9 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
           }
         }
 
+        // Parse Lists
+        // Packing: Name(0), Status(1)
+        // Shopping/Food: Region(0), Title(1), Location(2), Cost(3), Status(4), Notes(5)
         const parseList = (sheetName, offset) => {
             const data = getSheetData(sheetName);
             const list = [];
@@ -514,9 +538,15 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
                 for (let i = 1; i < data.length; i++) {
                     const row = data[i];
                     if (!row) continue;
+                    
                     if (sheetName === '行李') {
-                        if(row[0]) list.push({ id: Date.now() + i + offset, title: row[0], completed: row[1] === "已完成" });
+                        if(row[0]) list.push({ 
+                            id: Date.now() + i + offset, 
+                            title: row[0], 
+                            completed: row[1] === "已完成" 
+                        });
                     } else {
+                        // Shopping or Food
                         if(row[1]) list.push({
                             id: Date.now() + i + offset,
                             region: row[0] || "",
@@ -536,12 +566,14 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
         const newShoppingList = parseList("購物", 2000);
         const newFoodList = parseList("美食", 3000);
 
+        // Parse Expenses
+        // Format: Date(0), Region(1), Cat(2), Title(3), Location(4), Payer(5), Cost(6), Split(7)
         const expenseData = getSheetData("費用");
         const newExpenses = [];
         if (expenseData.length > 1) {
           for (let i = 1; i < expenseData.length; i++) {
             const row = expenseData[i];
-            if (!row || !row[3]) continue;
+            if (!row || !row[3]) continue; // Title is required
 
             const catLabel = row[2];
             const catEntry = Object.entries(EXPENSE_CATEGORIES).find(([k, v]) => v.label === catLabel);
@@ -566,6 +598,7 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
                     amount: shareAmount
                   }));
                } else {
+                  // Detailed split format "A:100, B:200"
                   const parts = splitStr.split(",");
                   parts.forEach((p, dIdx) => {
                      const [target, amt] = p.split(":").map(s => s.trim());
@@ -590,7 +623,7 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
 
             newExpenses.push({
               id: Date.now() + i + 4000,
-              date: row[0] || newTripSettings.startDate,
+              date: parseExcelDate(row[0]) || newTripSettings.startDate,
               region: row[1] || "",
               category: category,
               title: row[3],
@@ -605,6 +638,7 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
           }
         }
 
+        // --- OVERWRITE ALL DATA ---
         setTripSettings(newTripSettings);
         setCompanions(newCompanions);
         setCurrencySettings(newCurrencySettings);
@@ -616,7 +650,7 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
         
         setActiveDay(0);
 
-        alert("匯入成功！資料已更新為中文格式。");
+        alert("匯入成功！資料已完全覆蓋為 Excel 內容。");
 
       } catch (err) {
         console.error(err);
@@ -641,19 +675,40 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
     const XLSX = window.XLSX;
     const wb = XLSX.utils.book_new();
 
+    // Helper: Apply cell format
+    const setCellFormat = (ws, r, c, format) => {
+        const ref = XLSX.utils.encode_cell({r, c});
+        if (ws[ref]) {
+            ws[ref].z = format;
+        }
+    };
+
+    // Helper: Apply format to a whole column from startRow
+    const formatColumn = (ws, colIndex, format, startRow = 1) => {
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for (let R = startRow; R <= range.e.r; ++R) {
+            setCellFormat(ws, R, colIndex, format);
+        }
+    };
+
     // 1. 專案概覽 Sheet
     const overviewData = [
       ["項目", "內容", "", "", "參考：旅行國家", "參考：貨幣代碼"],
       ["專案標題", tripSettings.title],
-      ["出發日期", tripSettings.startDate],
-      ["回國日期", tripSettings.endDate],
+      ["出發日期", new Date(tripSettings.startDate)], // Convert to Date for formatting
+      ["回國日期", new Date(tripSettings.endDate)],   // Convert to Date for formatting
       ["旅行人員", companions.join(", ")],
       ["旅行國家", currencySettings.selectedCountry.name],
       ["貨幣代碼", currencySettings.selectedCountry.currency],
-      ["匯率 (1外幣 = TWD)", currencySettings.exchangeRate]
+      ["匯率 (1外幣 = TWD)", currencySettings.exchangeRate] // Keep as number
     ];
     const wsOverview = XLSX.utils.aoa_to_sheet(overviewData);
     
+    // Apply Formatting for Overview
+    setCellFormat(wsOverview, 2, 1, "yyyy/mm/dd"); // B3: Start Date
+    setCellFormat(wsOverview, 3, 1, "yyyy/mm/dd"); // B4: End Date
+    setCellFormat(wsOverview, 7, 1, "0.00");       // B8: Rate (2 decimal places)
+
     // Add reference lists to Overview Sheet (Cols E, F)
     const countryList = COUNTRY_OPTIONS.map(c => [c.name, c.currency]);
     XLSX.utils.sheet_add_aoa(wsOverview, countryList, { origin: "E2" });
@@ -676,13 +731,16 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
           ICON_MAP[item.type]?.label || item.type,
           item.title,
           item.location || "",
-          item.cost || 0,
+          item.cost || 0, // Number
           item.notes || ""
         ]);
       });
     });
     const wsItinerary = XLSX.utils.aoa_to_sheet(itineraryRows);
     
+    // Format Cost Column (Col G -> Index 6)
+    formatColumn(wsItinerary, 6, "#,##0");
+
     // Add Type reference to Col L
     const typeList = Object.values(ICON_MAP).map(v => [v.label]);
     XLSX.utils.sheet_add_aoa(wsItinerary, typeList, { origin: "L2" });
@@ -707,12 +765,16 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
         item.region || "",
         item.title,
         item.location || "",
-        item.cost || 0,
+        item.cost || 0, // Number
         item.completed ? "已購買" : "未購買",
         item.notes || ""
       ]);
     });
     const wsShopping = XLSX.utils.aoa_to_sheet(shoppingRows);
+    
+    // Format Cost Column (Col D -> Index 3)
+    formatColumn(wsShopping, 3, "#,##0");
+
     XLSX.utils.sheet_add_aoa(wsShopping, [["已購買"], ["未購買"]], { origin: "L2" });
     wsShopping['!cols'] = [{wch:15}, {wch:30}, {wch:20}, {wch:12}, {wch:10}, {wch:30}, {wch:5}, {wch:5}, {wch:5}, {wch:5}, {wch:5}, {wch:15}];
     XLSX.utils.book_append_sheet(wb, wsShopping, "購物");
@@ -724,12 +786,16 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
         item.region || "",
         item.title,
         item.location || "",
-        item.cost || 0,
+        item.cost || 0, // Number
         item.completed ? "已吃" : "未吃",
         item.notes || ""
       ]);
     });
     const wsFood = XLSX.utils.aoa_to_sheet(foodRows);
+    
+    // Format Cost Column (Col D -> Index 3)
+    formatColumn(wsFood, 3, "#,##0");
+
     XLSX.utils.sheet_add_aoa(wsFood, [["已吃"], ["未吃"]], { origin: "L2" });
     wsFood['!cols'] = [{wch:15}, {wch:30}, {wch:20}, {wch:12}, {wch:10}, {wch:30}, {wch:5}, {wch:5}, {wch:5}, {wch:5}, {wch:5}, {wch:15}];
     XLSX.utils.book_append_sheet(wb, wsFood, "美食");
@@ -745,17 +811,22 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
       }
 
       expenseRows.push([
-        item.date,
+        new Date(item.date), // Convert to Date for formatting
         item.region || "",
         EXPENSE_CATEGORIES[item.category]?.label || item.category,
         item.title,
         item.location || "",
         item.payer,
-        item.cost,
+        item.cost, // Number
         splitStr
       ]);
     });
     const wsExpenses = XLSX.utils.aoa_to_sheet(expenseRows);
+    
+    // Format Date Column (Col A -> Index 0) and Cost Column (Col G -> Index 6)
+    formatColumn(wsExpenses, 0, "yyyy/mm/dd");
+    formatColumn(wsExpenses, 6, "#,##0");
+
     const categoryList = Object.values(EXPENSE_CATEGORIES).map(v => [v.label]);
     XLSX.utils.sheet_add_aoa(wsExpenses, categoryList, { origin: "L2" });
     wsExpenses['!cols'] = [{wch:12}, {wch:10}, {wch:10}, {wch:30}, {wch:20}, {wch:10}, {wch:12}, {wch:40}, {wch:5}, {wch:5}, {wch:5}, {wch:15}];
