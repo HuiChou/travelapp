@@ -328,6 +328,7 @@ const generateNewProjectData = (title) => {
   ];
 
   return {
+    themeId: 'mori', // Default theme for new projects
     tripSettings: { title: title, startDate: startDateStr, endDate: endDateStr, days: 3 },
     companions: ['Me'],
     currencySettings: { selectedCountry: COUNTRY_OPTIONS[0], exchangeRate: COUNTRY_OPTIONS[0].defaultRate },
@@ -461,10 +462,203 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
       try {
         const bstr = evt.target.result;
         const wb = window.XLSX.read(bstr, { type: 'binary' });
-        // Simplified import logic - in a real app this would map column names back to state
-        // and ideally handle dynamic categories if present in the excel metadata
-        alert("匯入功能演示：檔案已讀取，但需要完整的資料映射邏輯才能完全恢復狀態。");
-      } catch (err) { console.error(err); alert("匯入失敗"); }
+        
+        // 1. Parse Overview (專案概覽)
+        const wsOverview = wb.Sheets["專案概覽"];
+        if (wsOverview) {
+            const data = window.XLSX.utils.sheet_to_json(wsOverview, { header: 1 });
+            const title = data[1] ? data[1][1] : tripSettings.title;
+            let startDate = data[2] ? data[2][1] : tripSettings.startDate;
+            let endDate = data[3] ? data[3][1] : tripSettings.endDate;
+            
+            if (typeof startDate === 'number') startDate = new Date(Math.round((startDate - 25569)*86400*1000)).toISOString().split('T')[0];
+            if (typeof endDate === 'number') endDate = new Date(Math.round((endDate - 25569)*86400*1000)).toISOString().split('T')[0];
+
+            const companionsStr = data[4] ? data[4][1] : "";
+            const newCompanions = companionsStr ? companionsStr.split(",").map(s => s.trim()) : ["Me"];
+            
+            const countryName = data[5] ? data[5][1] : "";
+            const currencyCode = data[6] ? data[6][1] : "";
+            const exchangeRate = data[7] ? parseFloat(data[7][1]) : 1;
+
+            const selectedCountry = COUNTRY_OPTIONS.find(c => c.name === countryName || c.currency === currencyCode) || COUNTRY_OPTIONS[0];
+
+            const days = calculateDaysDiff(startDate, endDate);
+
+            setTripSettings({ title, startDate, endDate, days });
+            setCompanions(newCompanions);
+            setCurrencySettings({ selectedCountry, exchangeRate });
+        }
+
+        // 5. Parse Categories (管理類別) - MUST be before parsing other sheets to populate IDs
+        const wsCategories = wb.Sheets["管理類別"];
+        // Temporary storage for imported categories to use during this import session
+        let currentItinCats = [...itineraryCategories];
+        let currentExpCats = [...expenseCategories];
+
+        if (wsCategories) {
+            const catData = window.XLSX.utils.sheet_to_json(wsCategories);
+            const newItinCats = [];
+            const newExpCats = [];
+            
+            catData.forEach(row => {
+                const type = row["類型"];
+                const item = {
+                    id: row["ID"] ? String(row["ID"]) : `cat_${Date.now()}_${Math.random()}`,
+                    label: row["名稱"] || "未命名",
+                    icon: ICON_REGISTRY[row["圖示"]] ? row["圖示"] : 'Star',
+                    color: row["顏色"] || ''
+                };
+                
+                if (type === "行程") {
+                    if (!item.color) item.color = 'bg-[#F2F4F1]';
+                    newItinCats.push(item);
+                } else if (type === "費用") {
+                    newExpCats.push(item);
+                }
+            });
+            
+            if (newItinCats.length > 0) {
+                setItineraryCategories(newItinCats);
+                currentItinCats = newItinCats;
+            }
+            if (newExpCats.length > 0) {
+                setExpenseCategories(newExpCats);
+                currentExpCats = newExpCats;
+            }
+        }
+
+        // Helper maps using the (potentially updated) categories
+        const itinLabelToId = {};
+        currentItinCats.forEach(c => itinLabelToId[c.label] = c.id);
+        const expLabelToId = {};
+        currentExpCats.forEach(c => expLabelToId[c.label] = c.id);
+
+        // 2. Parse Itinerary (行程表)
+        const wsItinerary = wb.Sheets["行程表"];
+        if (wsItinerary) {
+            const rawData = window.XLSX.utils.sheet_to_json(wsItinerary);
+            const newItineraries = {};
+            
+            rawData.forEach(row => {
+                const dayStr = row["Day"] || "Day 1";
+                const dayIndex = parseInt(dayStr.replace("Day ", "")) - 1;
+                if (dayIndex < 0) return;
+
+                if (!newItineraries[dayIndex]) newItineraries[dayIndex] = [];
+
+                const typeLabel = row["類型"];
+                const typeId = itinLabelToId[typeLabel] || currentItinCats[0].id;
+
+                newItineraries[dayIndex].push({
+                    id: Date.now() + Math.random(),
+                    type: typeId,
+                    title: row["標題"] || "未命名",
+                    time: row["時間"] || "09:00",
+                    duration: parseInt(row["持續時間(分)"]) || 60,
+                    location: row["地點"] || "",
+                    cost: parseFloat(row["費用 (外幣)"]) || 0,
+                    notes: row["備註"] || ""
+                });
+            });
+            setItineraries(newItineraries);
+        }
+
+        // 3. Parse Lists (Packing, Shopping, Food)
+        const parseList = (sheetName, mapFn) => {
+            const ws = wb.Sheets[sheetName];
+            if (!ws) return [];
+            return window.XLSX.utils.sheet_to_json(ws).map(mapFn);
+        };
+
+        setPackingList(parseList("行李", row => ({
+            id: Date.now() + Math.random(),
+            title: row["物品名稱"] || "未命名",
+            completed: row["狀態"] === "已完成"
+        })));
+
+        setShoppingList(parseList("購物", row => ({
+            id: Date.now() + Math.random(),
+            region: row["地區"] || "",
+            title: row["商品名稱"] || "未命名",
+            location: row["地點/店名"] || "",
+            cost: parseFloat(row["預估費用"]) || 0,
+            completed: row["購買狀態"] === "已購買",
+            notes: row["備註"] || ""
+        })));
+
+        setFoodList(parseList("美食", row => ({
+            id: Date.now() + Math.random(),
+            region: row["地區"] || "",
+            title: row["餐廳名稱"] || "未命名",
+            location: row["地點/地址"] || "",
+            cost: parseFloat(row["預估費用"]) || 0,
+            completed: row["完成狀態"] === "已吃",
+            notes: row["備註"] || ""
+        })));
+
+        // 4. Parse Expenses
+        const wsExpenses = wb.Sheets["費用"];
+        if (wsExpenses) {
+             const rawData = window.XLSX.utils.sheet_to_json(wsExpenses);
+             const newExpenses = rawData.map(row => {
+                 const catLabel = row["類別"];
+                 const catId = expLabelToId[catLabel] || currentExpCats[0].id;
+                 const payer = row["付款人"] || "Me";
+                 const cost = parseFloat(row["總金額 (外幣)"]) || 0;
+                 
+                 const splitStr = row["分攤詳情"] || "";
+                 let shares = [payer];
+                 let details = [];
+
+                 if (splitStr.includes("分攤:")) {
+                     const sharesPart = splitStr.replace("分攤:", "").trim();
+                     shares = sharesPart.split(",").map(s => s.trim());
+                     const shareAmount = Math.round(cost / shares.length);
+                     details = shares.map((s, i) => ({
+                         id: Date.now() + i + Math.random(),
+                         payer: payer,
+                         target: s,
+                         amount: shareAmount
+                     }));
+                 } else {
+                     shares = [payer]; 
+                     const parts = splitStr.split(",").map(s => s.trim());
+                     if (parts.length > 0 && parts[0].includes(":")) {
+                         shares = [];
+                         details = parts.map((p, i) => {
+                             const [name, amt] = p.split(":").map(x => x.trim());
+                             const targetName = name === '全員' ? 'ALL' : name;
+                             if (!shares.includes(targetName)) shares.push(targetName);
+                             return {
+                                 id: Date.now() + i + Math.random(),
+                                 payer: payer,
+                                 target: targetName,
+                                 amount: parseFloat(amt) || 0
+                             }
+                         });
+                     }
+                 }
+
+                 return {
+                     id: Date.now() + Math.random(),
+                     date: row["日期"] || new Date().toISOString().split('T')[0],
+                     region: row["地區"] || "",
+                     category: catId,
+                     title: row["項目"] || "未命名",
+                     location: row["地點"] || "",
+                     payer: payer,
+                     cost: cost,
+                     currency: row["參考：貨幣代碼"] || "JPY",
+                     shares: shares,
+                     details: details
+                 };
+             });
+             setExpenses(newExpenses);
+        }
+
+        alert("匯入成功！");
+      } catch (err) { console.error(err); alert("匯入失敗，請確認檔案格式正確。"); }
     };
     reader.readAsBinaryString(file);
     e.target.value = '';
@@ -491,6 +685,21 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
       ["貨幣代碼", currencySettings.selectedCountry.currency],
       ["匯率 (1外幣 = TWD)", currencySettings.exchangeRate]
     ];
+
+    // 填充概覽參考選單 (E, F 欄位)
+    COUNTRY_OPTIONS.forEach((country, index) => {
+      const rowIndex = index + 1; // 標題在第0列
+      // 確保該列存在
+      if (!overviewData[rowIndex]) {
+        overviewData[rowIndex] = ["", "", "", "", "", ""];
+      }
+      // 確保該列長度足夠
+      while (overviewData[rowIndex].length < 6) overviewData[rowIndex].push("");
+      
+      overviewData[rowIndex][4] = country.name;
+      overviewData[rowIndex][5] = country.currency;
+    });
+
     const wsOverview = XLSX.utils.aoa_to_sheet(overviewData);
     XLSX.utils.book_append_sheet(wb, wsOverview, "專案概覽");
 
@@ -509,7 +718,7 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
           `Day ${parseInt(dayIndex) + 1}`,
           item.time,
           item.duration || 60, 
-          cat.label, // Use label mapping
+          cat.label, 
           item.title,
           item.location || "",
           item.cost || 0,
@@ -517,6 +726,17 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
         ]);
       });
     });
+
+    // 填充行程參考選單 (J 欄位 index 9)
+    itineraryCategories.forEach((cat, index) => {
+        const rowIndex = index + 1;
+        if (!itineraryRows[rowIndex]) {
+            itineraryRows[rowIndex] = new Array(10).fill("");
+        }
+        while(itineraryRows[rowIndex].length < 10) itineraryRows[rowIndex].push("");
+        itineraryRows[rowIndex][9] = cat.label;
+    });
+
     const wsItinerary = XLSX.utils.aoa_to_sheet(itineraryRows);
     XLSX.utils.book_append_sheet(wb, wsItinerary, "行程表");
 
@@ -548,7 +768,7 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
       expenseRows.push([
         new Date(item.date),
         item.region || "",
-        cat.label, // Use label mapping
+        cat.label, 
         item.title,
         item.location || "",
         item.payer,
@@ -556,8 +776,26 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
         splitStr
       ]);
     });
+
+    // 填充費用參考選單 (J 欄位 index 9)
+    expenseCategories.forEach((cat, index) => {
+        const rowIndex = index + 1;
+        if (!expenseRows[rowIndex]) {
+            expenseRows[rowIndex] = new Array(10).fill("");
+        }
+        while(expenseRows[rowIndex].length < 10) expenseRows[rowIndex].push("");
+        expenseRows[rowIndex][9] = cat.label;
+    });
+
     const wsExpenses = XLSX.utils.aoa_to_sheet(expenseRows);
     XLSX.utils.book_append_sheet(wb, wsExpenses, "費用");
+
+    // 7. 管理類別 Sheet (New)
+    const categoryRows = [["類型", "ID", "名稱", "圖示", "顏色"]];
+    itineraryCategories.forEach(c => categoryRows.push(["行程", c.id, c.label, c.icon, c.color]));
+    expenseCategories.forEach(c => categoryRows.push(["費用", c.id, c.label, c.icon, ""]));
+    const wsCategories = XLSX.utils.aoa_to_sheet(categoryRows);
+    XLSX.utils.book_append_sheet(wb, wsCategories, "管理類別");
 
     const todayStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
     const fileName = `${tripSettings.title || "MyTrip"}_${todayStr}.xlsx`;
@@ -1491,8 +1729,22 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
   );
 };
 
-const TravelHome = ({ projects, onAddProject, onDeleteProject, onOpenProject, theme }) => {
+const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, onOpenProject }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const [clickingId, setClickingId] = useState(null);
+  
+  // Requirement 1: Force Home Page to use 'Mori' theme always
+  const theme = THEMES.mori;
+
+  const handleProjectClick = (project) => {
+    setClickingId(project.id);
+    // Short timeout to show the "saturated" state before switching
+    setTimeout(() => {
+      onOpenProject(project);
+      setClickingId(null);
+    }, 150);
+  };
+
   return (
     <div className={`min-h-screen ${theme.bg} text-[#464646] font-serif ${theme.selection} flex flex-col`}>
       <nav className={`w-full px-4 md:px-8 py-6 flex justify-between items-center border-b ${theme.border}/50`}>
@@ -1505,13 +1757,54 @@ const TravelHome = ({ projects, onAddProject, onDeleteProject, onOpenProject, th
           <h1 className={`text-3xl md:text-6xl lg:text-7xl font-light ${theme.primary} leading-tight tracking-widest mb-2`}>我的旅程</h1>
           <p className="text-[#888888] text-sm md:text-base tracking-[0.4em] font-light uppercase mb-8">SELECT YOUR JOURNEY</p>
           <div className="w-full max-w-sm flex flex-col gap-4 my-4">
-            {projects.map((project) => (
-              <div key={project.id} onClick={() => onOpenProject(project)} className={`group relative bg-[#FFFFFF] border ${theme.border} py-4 px-8 rounded-full shadow-sm hover:shadow-md hover:bg-[#F2F0EB] transition-all duration-500 cursor-pointer flex justify-between items-center overflow-hidden`} style={{ borderColor: theme.border.replace('border-', '') }}>
-                <div className={`absolute left-0 top-0 bottom-0 w-1 ${theme.accent.replace('text-', 'bg-')} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}></div>
-                <div className="flex flex-col items-start gap-1 pl-2"><span className={`text-[#464646] tracking-[0.2em] font-light group-hover:${theme.primary} transition-colors text-left`}>{project.name}</span><span className="text-xs text-[#888888] font-sans tracking-widest">{formatLastModified(project.lastModified)}</span></div>
-                <div className="flex items-center gap-2"><ChevronRight size={16} className={`text-[#E6E2D3] group-hover:opacity-0 absolute right-8 transition-all duration-300`} /><button onClick={(e) => onDeleteProject(e, project.id)} className={`opacity-0 group-hover:opacity-100 translate-x-4 group-hover:translate-x-0 transition-all duration-300 w-8 h-8 rounded-full flex items-center justify-center hover:bg-[#FFF0F0] text-[#E6E2D3] hover:text-[#C55A5A]`} title="刪除"><X size={16} /></button></div>
-              </div>
-            ))}
+            {projects.map((project) => {
+              // Retrieve project-specific theme
+              const projectThemeId = allProjectsData[project.id]?.themeId || 'mori';
+              const pTheme = THEMES[projectThemeId];
+              const isClicking = clickingId === project.id;
+              
+              // Requirement 2: Button uses home colors by default, but saturated project colors on active/click
+              // Default state: bg-white, text-gray (Mori style)
+              // Active state (isClicking): project's primaryBg (saturated), text-white
+              
+              return (
+                <div 
+                  key={project.id} 
+                  onClick={() => handleProjectClick(project)} 
+                  className={`group relative py-4 px-8 rounded-full shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer flex justify-between items-center overflow-hidden border
+                    ${isClicking ? `${pTheme.primaryBg} border-transparent scale-[0.98]` : `bg-[#FFFFFF] ${theme.border} hover:bg-[#F2F0EB]`}
+                  `}
+                >
+                  {/* Hover indicator strip using Project's color */}
+                  <div className={`absolute left-0 top-0 bottom-0 w-1 ${pTheme.primaryBg.replace('bg-', 'bg-opacity-80 bg-')} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}></div>
+                  
+                  <div className="flex flex-col items-start gap-1 pl-2">
+                    <span className={`tracking-[0.2em] font-light transition-colors text-left
+                       ${isClicking ? 'text-white' : `text-[#464646] group-hover:${pTheme.primary}`}
+                    `}>
+                      {project.name}
+                    </span>
+                    <span className={`text-xs font-sans tracking-widest ${isClicking ? 'text-white/80' : 'text-[#888888]'}`}>
+                      {formatLastModified(project.lastModified)}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <ChevronRight size={16} className={`transition-all duration-300 ${isClicking ? 'text-white' : 'text-[#E6E2D3] group-hover:opacity-0 absolute right-8'}`} />
+                    {/* Delete button only shows on hover, hides on click to avoid confusion */}
+                    {!isClicking && (
+                      <button 
+                        onClick={(e) => onDeleteProject(e, project.id)} 
+                        className={`opacity-0 group-hover:opacity-100 translate-x-4 group-hover:translate-x-0 transition-all duration-300 w-8 h-8 rounded-full flex items-center justify-center hover:bg-[#FFF0F0] text-[#E6E2D3] hover:text-[#C55A5A]`} 
+                        title="刪除"
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
           <div className="pt-8">
             <button onClick={onAddProject} className={`group relative flex items-center gap-3 ${theme.primaryBg} text-white px-8 py-4 rounded-full shadow-lg hover:shadow-xl hover:opacity-90 transition-all duration-500 ease-out overflow-hidden`} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
@@ -1528,13 +1821,26 @@ const TravelHome = ({ projects, onAddProject, onDeleteProject, onOpenProject, th
 export default function App() {
   const [currentView, setCurrentView] = useState('home'); 
   const [activeProject, setActiveProject] = useState(null);
-  const [currentThemeId, setCurrentThemeId] = useState('mori');
-  const theme = THEMES[currentThemeId];
+  const [currentThemeId, setCurrentThemeId] = useState('mori'); // Global theme state for Planner
+  
+  // Initial Data
   const [projects, setProjects] = useState([{ id: 1, name: '東京 5 日遊', lastModified: new Date().toISOString() }]);
   const [allProjectsData, setAllProjectsData] = useState({ 1: generateNewProjectData('東京 5 日遊') });
 
-  const handleOpenProject = (project) => { setActiveProject(project); setCurrentView('planner'); };
+  const theme = THEMES[currentThemeId]; // Theme object for Planner
+
+  const handleOpenProject = (project) => {
+    const pData = allProjectsData[project.id];
+    // Restore the project's specific theme, or default to 'mori'
+    const savedThemeId = pData?.themeId || 'mori';
+    setCurrentThemeId(savedThemeId);
+    
+    setActiveProject(project);
+    setCurrentView('planner'); 
+  };
+  
   const handleBackToHome = () => { setCurrentView('home'); setActiveProject(null); };
+  
   const handleAddProject = () => {
     const nextId = projects.length > 0 ? Math.max(...projects.map(p => p.id)) + 1 : 1;
     const displayNum = (projects.length + 1).toString().padStart(2, '0');
@@ -1543,23 +1849,71 @@ export default function App() {
     setProjects([...projects, newProject]);
     setAllProjectsData(prev => ({ ...prev, [nextId]: generateNewProjectData(newName) }));
   };
+  
   const handleDeleteProject = (e, id) => {
     e.stopPropagation(); 
     setProjects(projects.filter(project => project.id !== id));
     setAllProjectsData(prev => { const newData = { ...prev }; delete newData[id]; return newData; });
   };
+  
   const handleSaveProjectData = (projectId, newData) => {
     setAllProjectsData(prev => ({ ...prev, [projectId]: { ...prev[projectId], ...newData } }));
-    setProjects(prevProjects => prevProjects.map(p => p.id === projectId ? { ...p, name: (newData.tripSettings && newData.tripSettings.title) ? newData.tripSettings.title : p.name, lastModified: new Date().toISOString() } : p));
-    if (newData.tripSettings && newData.tripSettings.title && activeProject && activeProject.id === projectId) { setActiveProject(prev => ({ ...prev, name: newData.tripSettings.title })); }
+    
+    // Update project list meta if title changed
+    setProjects(prevProjects => prevProjects.map(p => 
+      p.id === projectId 
+        ? { 
+            ...p, 
+            name: (newData.tripSettings && newData.tripSettings.title) ? newData.tripSettings.title : p.name, 
+            lastModified: new Date().toISOString() 
+          } 
+        : p
+    ));
+    
+    // Update active project ref if needed
+    if (newData.tripSettings && newData.tripSettings.title && activeProject && activeProject.id === projectId) { 
+      setActiveProject(prev => ({ ...prev, name: newData.tripSettings.title })); 
+    }
+  };
+
+  const handleThemeChange = (newThemeId) => {
+    setCurrentThemeId(newThemeId);
+    if (activeProject) {
+      // Save theme preference to project data immediately
+      handleSaveProjectData(activeProject.id, { themeId: newThemeId });
+    }
   };
 
   if (currentView === 'planner' && activeProject) {
     const defaultData = generateNewProjectData(activeProject.name);
     const storedData = allProjectsData[activeProject.id] || {};
-    const projectData = { ...defaultData, ...storedData, tripSettings: { ...defaultData.tripSettings, ...(storedData.tripSettings || {}) }, currencySettings: { ...defaultData.currencySettings, ...(storedData.currencySettings || {}) } };
-    return <TripPlanner key={activeProject.id} projectData={projectData} onBack={handleBackToHome} onSaveData={(newData) => handleSaveProjectData(activeProject.id, newData)} theme={theme} onChangeTheme={setCurrentThemeId} />;
+    // Merge everything safely
+    const projectData = { 
+      ...defaultData, 
+      ...storedData, 
+      tripSettings: { ...defaultData.tripSettings, ...(storedData.tripSettings || {}) }, 
+      currencySettings: { ...defaultData.currencySettings, ...(storedData.currencySettings || {}) } 
+    };
+    
+    return (
+      <TripPlanner 
+        key={activeProject.id} 
+        projectData={projectData} 
+        onBack={handleBackToHome} 
+        onSaveData={(newData) => handleSaveProjectData(activeProject.id, newData)} 
+        theme={theme} 
+        onChangeTheme={handleThemeChange} 
+      />
+    );
   }
-  // Change here: Force Home Page to always use 'Mori' theme
-  return <TravelHome projects={projects} onAddProject={handleAddProject} onDeleteProject={handleDeleteProject} onOpenProject={handleOpenProject} theme={THEMES.mori} />;
+  
+  return (
+    <TravelHome 
+      projects={projects} 
+      allProjectsData={allProjectsData}
+      onAddProject={handleAddProject} 
+      onDeleteProject={handleDeleteProject} 
+      onOpenProject={handleOpenProject} 
+    />
+  );
 }
