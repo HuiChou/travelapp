@@ -22,7 +22,7 @@ const ICON_REGISTRY = {
 
 // --- Google API Config ---
 const GOOGLE_CLIENT_ID = "456137719976-dp4uin8ae10f332qbhqm447nllr2u4ec.apps.googleusercontent.com";
-// Added drive.file scope to search and overwrite existing files
+// SCOPES: Includes drive.file to allow searching, renaming, and deleting files created by this app
 const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file";
 
 // --- Initial Default Categories ---
@@ -347,6 +347,7 @@ const generateNewProjectData = (title) => {
     shoppingList: getDefaultShoppingList(),
     foodList: getDefaultFoodList(),
     expenses: defaultExpenses,
+    googleDriveFileId: null // Track associated Google Drive file ID
   };
 };
 
@@ -378,6 +379,9 @@ const TripPlanner = ({
 
   const [itineraryCategories, setItineraryCategories] = useState(projectData?.categories?.itinerary || DEFAULT_ITINERARY_CATEGORIES);
   const [expenseCategories, setExpenseCategories] = useState(projectData?.categories?.expense || DEFAULT_EXPENSE_CATEGORIES);
+  
+  // Track Google Drive File ID locally for this session
+  const [googleDriveFileId, setGoogleDriveFileId] = useState(projectData?.googleDriveFileId || null);
 
   const [isXlsxLoaded, setIsXlsxLoaded] = useState(false);
   const fileInputRef = useRef(null);
@@ -408,7 +412,7 @@ const TripPlanner = ({
       }, 5000); // 5 seconds debounce
 
       return () => clearTimeout(timer);
-  }, [tripSettings, itineraries, expenses, packingList, shoppingList, foodList, googleUser, gapiInited]);
+  }, [tripSettings, itineraries, expenses, packingList, shoppingList, foodList, googleUser, gapiInited, googleDriveFileId]);
 
   const handleSaveToGoogleSheet = async (isSilent = false) => {
       if (!googleUser || !gapiInited) {
@@ -496,31 +500,64 @@ const TripPlanner = ({
               ]
           };
 
-          // 2. Check if file exists (Find or Create)
-          // Search for file not in trash with matching name and mimeType
-          const q = `name = '${title}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
-          const searchRes = await window.gapi.client.drive.files.list({ q, fields: 'files(id, name)' });
-          
-          let spreadsheetId;
-          
-          if (searchRes.result.files && searchRes.result.files.length > 0) {
-              // Found existing file - Overwrite
-              spreadsheetId = searchRes.result.files[0].id;
+          // 2. Check and Rename/Create
+          let spreadsheetId = googleDriveFileId;
+          let fileExists = false;
+
+          // If we have a stored ID, check if it's still valid and check its name
+          if (spreadsheetId) {
+              try {
+                  const fileRes = await window.gapi.client.drive.files.get({
+                      fileId: spreadsheetId,
+                      fields: 'id, name, trashed'
+                  });
+                  
+                  if (!fileRes.result.trashed) {
+                      fileExists = true;
+                      // RENAME LOGIC: If title changed, update cloud file name
+                      if (fileRes.result.name !== title) {
+                          await window.gapi.client.drive.files.update({
+                              fileId: spreadsheetId,
+                              resource: { name: title }
+                          });
+                          if (!isSilent) console.log(`Cloud file renamed to: ${title}`);
+                      }
+                  }
+              } catch (e) {
+                  // File might be deleted or permission lost
+                  console.warn("Stored File ID not found or inaccessible, falling back to search.");
+                  spreadsheetId = null; 
+              }
+          }
+
+          if (!fileExists) {
+              // Search by name logic (Legacy support or if ID lost)
+              const q = `name = '${title}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
+              const searchRes = await window.gapi.client.drive.files.list({ q, fields: 'files(id, name)' });
               
-              // Clear old content to avoid mixing data if new list is shorter
-              await window.gapi.client.sheets.spreadsheets.values.batchClear({
-                  spreadsheetId,
-                  resource: { ranges: ["專案概覽", "行程表", "行李", "購物", "美食", "費用", "管理類別"] }
-              });
-          } else {
-              // Create new file
-              const createResponse = await window.gapi.client.sheets.spreadsheets.create({
-                  resource: sheetStructure
-              });
-              spreadsheetId = createResponse.result.spreadsheetId;
+              if (searchRes.result.files && searchRes.result.files.length > 0) {
+                  spreadsheetId = searchRes.result.files[0].id;
+              } else {
+                  // Create New
+                  const createResponse = await window.gapi.client.sheets.spreadsheets.create({
+                      resource: sheetStructure
+                  });
+                  spreadsheetId = createResponse.result.spreadsheetId;
+              }
+              
+              // Update local state with the new ID
+              setGoogleDriveFileId(spreadsheetId);
           }
           
           // 3. Write Data
+          if (fileExists || spreadsheetId) { 
+               // Clear old content to avoid mixing data
+               await window.gapi.client.sheets.spreadsheets.values.batchClear({
+                  spreadsheetId,
+                  resource: { ranges: ["專案概覽", "行程表", "行李", "購物", "美食", "費用", "管理類別"] }
+              });
+          }
+
           await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
               spreadsheetId: spreadsheetId,
               resource: {
@@ -566,9 +603,10 @@ const TripPlanner = ({
       categories: {
         itinerary: itineraryCategories,
         expense: expenseCategories
-      }
+      },
+      googleDriveFileId: googleDriveFileId // Persist the ID
     });
-  }, [tripSettings, companions, currencySettings, itineraries, packingList, shoppingList, foodList, expenses, itineraryCategories, expenseCategories]);
+  }, [tripSettings, companions, currencySettings, itineraries, packingList, shoppingList, foodList, expenses, itineraryCategories, expenseCategories, googleDriveFileId]);
 
   const [statsMode, setStatsMode] = useState('real');
   const [statsCategoryFilter, setStatsCategoryFilter] = useState('all');
@@ -1772,32 +1810,7 @@ const TripPlanner = ({
                 )}
               </form>
             </div>
-            <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] shrink-0`}>
-              <button type="submit" form="item-form" className={`w-full bg-[#3A3A3A] text-[#F9F8F6] py-3 rounded-lg font-bold text-sm hover:${theme.primaryBg} transition-colors`}>{editingItem ? '儲存' : '新增'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* ... Settings, Currency, Companion modals ... same as before ... */}
-      {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
-          <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border}`}>
-            <div className="p-6 shrink-0 text-center mb-0"><h2 className="text-xl font-serif font-bold text-[#3A3A3A]">旅程設定</h2></div>
-            <div className="overflow-y-auto px-6 pb-6 flex-1">
-              <form id="settings-form" onSubmit={handleSettingsSubmit} className="space-y-5">
-                <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">旅程標題</label><input type="text" value={tempSettings.title} onChange={e => setTempSettings({...tempSettings, title: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">出發日</label><input type="date" value={tempSettings.startDate} onChange={handleStartDateChange} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
-                  <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">回程日</label><input type="date" value={tempSettings.endDate} min={tempSettings.startDate} onChange={(e) => setTempSettings({...tempSettings, endDate: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#888] mb-2 uppercase flex items-center gap-1"><Palette size={12}/> 顏色主題</label>
-                  <div className="flex gap-2 justify-between">{Object.values(THEMES).map((t) => (<button key={t.id} type="button" onClick={() => onChangeTheme(t.id)} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${t.bg} border ${t.id === theme.id ? `border-2 ${t.primaryBorder} scale-110 shadow-md` : 'border-gray-200'}`} title={t.label}><div className={`w-4 h-4 rounded-full ${t.primaryBg}`}></div></button>))}</div>
-                </div>
-                <div className={`text-center bg-[#F2F0EB] py-2 rounded-lg border border-dashed ${theme.border}`}><span className="text-xs text-[#888] font-bold">總天數: </span><span className={`text-sm font-serif font-bold ${theme.primary}`}>{calculateDaysDiff(tempSettings.startDate, tempSettings.endDate)} 天</span></div>
-              </form>
-            </div>
-            <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] flex gap-3 shrink-0`}><button type="button" onClick={() => setIsSettingsOpen(false)} className={`flex-1 py-2.5 text-xs font-bold text-[#888] hover:${theme.hover} rounded-lg`}>取消</button><button type="submit" form="settings-form" className={`flex-1 ${theme.primaryBg} text-white py-2.5 rounded-lg text-xs font-bold hover:opacity-90`}>完成</button></div>
+            <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] shrink-0`}><button type="button" onClick={() => setIsSettingsOpen(false)} className={`flex-1 py-2.5 text-xs font-bold text-[#888] hover:${theme.hover} rounded-lg`}>取消</button><button type="submit" form="settings-form" className={`flex-1 ${theme.primaryBg} text-white py-2.5 rounded-lg text-xs font-bold hover:opacity-90`}>完成</button></div>
           </div>
         </div>
       )}
@@ -2088,21 +2101,34 @@ export default function App() {
 
     // Cloud Deletion Logic
     if (googleUser && gapiInited) {
-        const projectToDelete = projects.find(p => p.id === id);
-        if (projectToDelete) {
-            const title = `TravelApp_${projectToDelete.name}`;
-            try {
-                const q = `name = '${title}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
-                const searchRes = await window.gapi.client.drive.files.list({ q, fields: 'files(id, name)' });
-                if (searchRes.result.files && searchRes.result.files.length > 0) {
-                    const fileId = searchRes.result.files[0].id;
-                    await window.gapi.client.drive.files.delete({ fileId });
-                    console.log(`Cloud file deleted: ${title}`);
+        // Try to find file ID from allProjectsData directly
+        const projectToDeleteData = allProjectsData[id];
+        
+        if (projectToDeleteData && projectToDeleteData.googleDriveFileId) {
+             // If we have a stored ID, delete directly
+             try {
+                 await window.gapi.client.drive.files.delete({ fileId: projectToDeleteData.googleDriveFileId });
+                 console.log(`Cloud file deleted via ID: ${projectToDeleteData.googleDriveFileId}`);
+             } catch (err) {
+                 console.warn("Failed to delete cloud file via ID (might be already deleted or no permission):", err);
+             }
+        } else {
+             // Fallback: Search by name if no ID (for legacy projects)
+             const projectToDelete = projects.find(p => p.id === id);
+             if (projectToDelete) {
+                const title = `TravelApp_${projectToDelete.name}`;
+                try {
+                    const q = `name = '${title}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
+                    const searchRes = await window.gapi.client.drive.files.list({ q, fields: 'files(id, name)' });
+                    if (searchRes.result.files && searchRes.result.files.length > 0) {
+                        const fileId = searchRes.result.files[0].id;
+                        await window.gapi.client.drive.files.delete({ fileId });
+                        console.log(`Cloud file deleted via Name: ${title}`);
+                    }
+                } catch (err) {
+                    console.error("Failed to delete cloud file via search:", err);
                 }
-            } catch (err) {
-                console.error("Failed to delete cloud file:", err);
-                // Don't block local deletion on cloud error
-            }
+             }
         }
     }
 
