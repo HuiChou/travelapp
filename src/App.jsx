@@ -2008,6 +2008,13 @@ export default function App() {
     loadGis();
   }, []);
 
+  // --- Ensure gapi.client uses the stored token ---
+  useEffect(() => {
+      if (gapiInited && googleUser?.accessToken) {
+          window.gapi.client.setToken({ access_token: googleUser.accessToken });
+      }
+  }, [gapiInited, googleUser]);
+
   useEffect(() => {
     if (gisInited) {
         try {
@@ -2074,8 +2081,31 @@ export default function App() {
     setAllProjectsData(prev => ({ ...prev, [nextId]: generateNewProjectData(newName) }));
   };
   
-  const handleDeleteProject = (e, id) => {
+  const handleDeleteProject = async (e, id) => {
     e.stopPropagation(); 
+    
+    if (!window.confirm("確定要刪除此行程嗎？\n(若已登入 Google，雲端備份檔也會一併刪除)")) return;
+
+    // Cloud Deletion Logic
+    if (googleUser && gapiInited) {
+        const projectToDelete = projects.find(p => p.id === id);
+        if (projectToDelete) {
+            const title = `TravelApp_${projectToDelete.name}`;
+            try {
+                const q = `name = '${title}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
+                const searchRes = await window.gapi.client.drive.files.list({ q, fields: 'files(id, name)' });
+                if (searchRes.result.files && searchRes.result.files.length > 0) {
+                    const fileId = searchRes.result.files[0].id;
+                    await window.gapi.client.drive.files.delete({ fileId });
+                    console.log(`Cloud file deleted: ${title}`);
+                }
+            } catch (err) {
+                console.error("Failed to delete cloud file:", err);
+                // Don't block local deletion on cloud error
+            }
+        }
+    }
+
     setProjects(projects.filter(project => project.id !== id));
     setAllProjectsData(prev => { const newData = { ...prev }; delete newData[id]; return newData; });
   };
