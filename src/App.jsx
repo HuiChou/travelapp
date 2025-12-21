@@ -7,7 +7,8 @@ import {
   Receipt, PieChart, TrendingUp, Wallet, ArrowLeftRight, Home, Palette, 
   Download, Upload, Loader2, FileText, LayoutList, Palmtree, Tent, 
   Ticket, Bus, Car, Ship, Music, Gamepad2, Gift, Shirt, Briefcase, 
-  Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile
+  Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
+  Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2
 } from 'lucide-react';
 
 // --- Icon Registry for Dynamic Usage ---
@@ -18,6 +19,10 @@ const ICON_REGISTRY = {
   Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
   Flower2, Luggage, Calculator, Wallet, Receipt
 };
+
+// --- Google API Config ---
+const GOOGLE_CLIENT_ID = "456137719976-dp4uin8ae10f332qbhqm447nllr2u4ec.apps.googleusercontent.com";
+const SCOPES = "https://www.googleapis.com/auth/spreadsheets";
 
 // --- Initial Default Categories ---
 const DEFAULT_ITINERARY_CATEGORIES = [
@@ -370,18 +375,210 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
   const fileInputRef = useRef(null);
   const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
 
+  // --- Google API State ---
+  const [tokenClient, setTokenClient] = useState(null);
+  const [gapiInited, setGapiInited] = useState(false);
+  const [gisInited, setGisInited] = useState(false);
+  const [googleUser, setGoogleUser] = useState(null); // Simple user state
+  const [isSyncing, setIsSyncing] = useState(false);
+
   useEffect(() => {
+    // Load XLSX
     if (window.XLSX) {
       setIsXlsxLoaded(true);
-      return;
+    } else {
+      const script = document.createElement('script');
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+      script.async = true;
+      script.onload = () => setIsXlsxLoaded(true);
+      document.body.appendChild(script);
     }
-    const script = document.createElement('script');
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-    script.async = true;
-    script.onload = () => setIsXlsxLoaded(true);
-    document.body.appendChild(script);
+
+    // Load Google API Scripts dynamically
+    const loadGapi = () => {
+        const script = document.createElement('script');
+        script.src = "https://apis.google.com/js/api.js";
+        script.onload = () => {
+            window.gapi.load('client', () => {
+                // We don't initialize client here with apiKey/discoveryDocs yet to keep it simple, 
+                // we'll do dynamic loading or just use the token for raw requests if needed, 
+                // but standard flow is gapi.client.init. 
+                // Since we are using Implicit Flow (Token Model) from GIS, we mostly need gapi.client to make requests.
+                window.gapi.client.init({}).then(() => {
+                   // Load Sheets API discovery document
+                   window.gapi.client.load('https://sheets.googleapis.com/$discovery/rest?version=v4')
+                       .then(() => setGapiInited(true));
+                });
+            });
+        };
+        document.body.appendChild(script);
+    };
+
+    const loadGis = () => {
+        const script = document.createElement('script');
+        script.src = "https://accounts.google.com/gsi/client";
+        script.onload = () => {
+            setGisInited(true);
+        };
+        document.body.appendChild(script);
+    };
+
+    loadGapi();
+    loadGis();
+    
     return () => {}
   }, []);
+
+  // Initialize Token Client once GIS is loaded
+  useEffect(() => {
+    if (gisInited) {
+        try {
+            const client = window.google.accounts.oauth2.initTokenClient({
+                client_id: GOOGLE_CLIENT_ID,
+                scope: SCOPES,
+                callback: (tokenResponse) => {
+                    if (tokenResponse && tokenResponse.access_token) {
+                        setGoogleUser({ accessToken: tokenResponse.access_token });
+                        // alert("Google 登入成功！您可以開始同步資料了。");
+                    }
+                },
+            });
+            setTokenClient(client);
+        } catch (e) {
+            console.error("Error initializing Google Token Client", e);
+        }
+    }
+  }, [gisInited]);
+
+  const handleGoogleLogin = () => {
+      if (tokenClient) {
+          // Triggers the popup
+          tokenClient.requestAccessToken();
+      } else {
+          alert("Google 服務尚未載入完成，請稍候再試。");
+      }
+  };
+
+  const handleGoogleLogout = () => {
+      const token = googleUser?.accessToken;
+      if (token) {
+          window.google.accounts.oauth2.revoke(token, () => {
+              setGoogleUser(null);
+              alert("已登出 Google 帳號");
+          });
+      } else {
+          setGoogleUser(null);
+      }
+  };
+
+  // --- Google Sheets Sync Logic ---
+  // To keep it simple and robust, we will export data as "Rows" similar to Excel logic
+  // and create/update a Spreadsheet named "TripPlanner - [Title]"
+  
+  const prepareDataForSheet = () => {
+       // Reuse the logic from handleExportToExcel but return arrays instead of XLSX objects
+       // 1. Overview
+       const overviewRows = [
+           ["專案概覽"],
+           ["專案標題", tripSettings.title],
+           ["出發日期", tripSettings.startDate],
+           ["回國日期", tripSettings.endDate],
+           ["旅行人員", companions.join(", ")],
+           ["旅行國家", currencySettings.selectedCountry.name],
+           ["貨幣代碼", currencySettings.selectedCountry.currency],
+           ["匯率", currencySettings.exchangeRate],
+           [] // empty row
+       ];
+
+       // 2. Itinerary
+       const itineraryRows = [["行程表"], ["Day", "時間", "持續時間", "類型", "標題", "地點", "費用", "備註"]];
+       const sortedDays = Object.keys(itineraries).sort((a,b) => parseInt(a)-parseInt(b));
+       sortedDays.forEach(dayIndex => {
+         const dayItems = itineraries[dayIndex] || [];
+         dayItems.forEach(item => {
+           const cat = itineraryCategories.find(c => c.id === item.type) || { label: item.type };
+           itineraryRows.push([
+             `Day ${parseInt(dayIndex) + 1}`, item.time, item.duration, cat.label, item.title, item.location || "", item.cost || 0, item.notes || ""
+           ]);
+         });
+       });
+
+       // 3. Expenses
+       const expenseRows = [["費用紀錄"], ["日期", "類別", "項目", "地點", "付款人", "總金額", "分攤詳情"]];
+       expenses.forEach(item => {
+         const cat = expenseCategories.find(c => c.id === item.category) || { label: item.category };
+         let splitStr = item.details?.map(d => `${d.target === 'ALL' ? '全員' : d.target}: ${d.amount}`).join(", ") || `分攤: ${item.shares.join(", ")}`;
+         expenseRows.push([
+           item.date, cat.label, item.title, item.location || "", item.payer, item.cost, splitStr
+         ]);
+       });
+
+       // 4. Checklists
+       const packingRows = [["行李清單"], ["物品名稱", "狀態"]];
+       packingList.forEach(item => packingRows.push([item.title, item.completed ? "OK" : ""]));
+
+       const shoppingRows = [["購物清單"], ["商品名稱", "預估費用", "狀態"]];
+       shoppingList.forEach(item => shoppingRows.push([item.title, item.cost || 0, item.completed ? "OK" : ""]));
+
+       const foodRows = [["美食清單"], ["餐廳名稱", "預估費用", "狀態"]];
+       foodList.forEach(item => foodRows.push([item.title, item.cost || 0, item.completed ? "OK" : ""]));
+       
+       return { overviewRows, itineraryRows, expenseRows, packingRows, shoppingRows, foodRows };
+  };
+
+  const handleSaveToGoogleSheet = async () => {
+      if (!googleUser || !gapiInited) {
+          handleGoogleLogin();
+          return;
+      }
+      
+      setIsSyncing(true);
+      try {
+          const title = `TripPlanner - ${tripSettings.title}`;
+          const sheetData = prepareDataForSheet();
+          
+          // 1. Create a new Spreadsheet (Simple approach: Create new every time to avoid complex search/update logic for now, 
+          // or we could search. Let's create new with date to ensure backup)
+          // Better UX: Search for existing file with same name? For now, let's create a NEW one with timestamp to be safe backup.
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          const sheetTitle = `${title} (${timestamp})`;
+          
+          const createResponse = await window.gapi.client.sheets.spreadsheets.create({
+              properties: { title: sheetTitle }
+          });
+          
+          const spreadsheetId = createResponse.result.spreadsheetId;
+          
+          // 2. Write Data
+          // We'll write everything to "Sheet1" for simplicity, or create multiple sheets.
+          // Let's dump all data into Sheet1 separated by spacing for a quick "Backup" view.
+          
+          let allValues = [
+              ...sheetData.overviewRows, ["", ""],
+              ...sheetData.itineraryRows, ["", ""],
+              ...sheetData.expenseRows, ["", ""],
+              ...sheetData.packingRows, ["", ""],
+              ...sheetData.shoppingRows, ["", ""],
+              ...sheetData.foodRows
+          ];
+          
+          await window.gapi.client.sheets.spreadsheets.values.update({
+              spreadsheetId: spreadsheetId,
+              range: "Sheet1!A1",
+              valueInputOption: "RAW",
+              resource: { values: allValues }
+          });
+          
+          alert(`備份成功！\n已建立新的 Google 試算表：${sheetTitle}\n請至您的 Google Drive 查看。`);
+
+      } catch (error) {
+          console.error("Error saving to Google Sheets:", error);
+          alert("儲存失敗，請檢查瀏覽器 Console 的錯誤訊息，或確認您的 Google 帳號權限。");
+      } finally {
+          setIsSyncing(false);
+      }
+  };
+
 
   useEffect(() => {
     onSaveData({
@@ -1251,7 +1448,34 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
                 {isFileMenuOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsFileMenuOpen(false)}></div>
-                    <div className={`absolute right-0 top-full mt-2 w-48 ${theme.card} rounded-xl shadow-xl border ${theme.border} p-2 flex flex-col gap-1 z-50 animate-in fade-in zoom-in-95 duration-200`}>
+                    <div className={`absolute right-0 top-full mt-2 w-64 ${theme.card} rounded-xl shadow-xl border ${theme.border} p-2 flex flex-col gap-1 z-50 animate-in fade-in zoom-in-95 duration-200`}>
+                      
+                      {/* Google Sheets Sync Section */}
+                      <div className={`px-4 py-2 text-xs font-bold text-[#888] uppercase tracking-wider border-b ${theme.border} mb-1 flex justify-between items-center`}>
+                          <span>雲端同步 (Google)</span>
+                          {googleUser && <span className="text-[10px] text-green-600 flex items-center gap-1"><CheckCircle2 size={10}/> 已登入</span>}
+                      </div>
+                      
+                      {googleUser ? (
+                          <>
+                             <button onClick={() => { handleSaveToGoogleSheet(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 text-[#3A3A3A]`} disabled={isSyncing}>
+                                {isSyncing ? <Loader2 size={16} className="animate-spin text-[#3A3A3A]"/> : <CloudUpload size={16} className={theme.primary}/>} 
+                                {isSyncing ? "同步中..." : "備份到 Google Sheets"}
+                             </button>
+                             <button onClick={() => { handleGoogleLogout(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-2 rounded-lg hover:${theme.dangerBg} text-xs font-bold flex items-center gap-3 text-[#C55A5A] mt-1`}>
+                                <LogOut size={14}/> 登出 Google
+                             </button>
+                          </>
+                      ) : (
+                          <button onClick={() => { handleGoogleLogin(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 text-[#3A3A3A]`}>
+                             <LogIn size={16} className={theme.primary}/> 登入以同步
+                          </button>
+                      )}
+
+                      <div className={`my-1 border-b ${theme.border}`}></div>
+
+                      {/* Excel Section */}
+                      <div className="px-4 py-2 text-xs font-bold text-[#888] uppercase tracking-wider">本機檔案 (Excel)</div>
                       <button onClick={() => { fileInputRef.current.click(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 ${!isXlsxLoaded ? 'opacity-50 cursor-not-allowed' : 'text-[#3A3A3A]'}`} disabled={!isXlsxLoaded}>{isXlsxLoaded ? <Upload size={16} /> : <Loader2 size={16} className="animate-spin" />} 匯入 Excel</button>
                       <button onClick={() => { handleExportToExcel(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 ${!isXlsxLoaded ? 'opacity-50 cursor-not-allowed' : 'text-[#3A3A3A]'}`} disabled={!isXlsxLoaded}>{isXlsxLoaded ? <Download size={16} /> : <Loader2 size={16} className="animate-spin" />} 匯出 Excel</button>
                     </div>
@@ -1448,8 +1672,8 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
                     <div className={`mt-1 w-5 h-5 rounded border flex items-center justify-center transition-all shrink-0 ${item.completed ? `${theme.primaryBg} ${theme.primaryBorder} text-white` : `bg-white ${theme.border} text-transparent hover:${theme.primaryBorder}`}`}><Check size={12} strokeWidth={3} /></div>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-start">
-                         <h3 className={`text-base font-bold font-serif hover:${theme.primary} transition-colors ${item.completed ? 'text-[#AAA] line-through' : 'text-[#3A3A3A]'}`} onClick={(e) => { e.stopPropagation(); openEditModal(item); }}>{item.title}</h3>
-                         {item.cost > 0 && (checklistTab !== 'packing') && !item.completed && (<div className="text-right"><div className={`text-sm font-bold ${theme.accent}`}>{currencySettings.selectedCountry.symbol} {formatMoney(item.cost)}</div></div>)}
+                          <h3 className={`text-base font-bold font-serif hover:${theme.primary} transition-colors ${item.completed ? 'text-[#AAA] line-through' : 'text-[#3A3A3A]'}`} onClick={(e) => { e.stopPropagation(); openEditModal(item); }}>{item.title}</h3>
+                          {item.cost > 0 && (checklistTab !== 'packing') && !item.completed && (<div className="text-right"><div className={`text-sm font-bold ${theme.accent}`}>{currencySettings.selectedCountry.symbol} {formatMoney(item.cost)}</div></div>)}
                       </div>
                       {(checklistTab !== 'packing') && (<div className="mt-2 space-y-1">{item.location && (<div className="flex items-center gap-1 -ml-1 text-xs text-[#666]"><MapPin size={12} className={theme.accent} /><span>{item.location}</span></div>)}{item.notes && <div className={`text-[10px] text-[#888] ${theme.hover} p-1.5 rounded inline-block`}>{item.notes}</div>}</div>)}
                     </div>
@@ -1597,7 +1821,7 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
                       <div>
                         <label className="block text-xs font-bold text-[#888] mb-1">預算 / 費用 (總額)</label>
                         <div className="flex gap-2">
-                          <div className="relative flex-1">
+                          <div className="relative flex-[2.2]">
                             <select value={formData.costType} onChange={(e) => setFormData({...formData, costType: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg pl-3 pr-8 py-2.5 text-[#3A3A3A] text-base appearance-none focus:outline-none focus:${theme.primaryBorder} h-10 font-bold`}><option value="FOREIGN">{currencySettings.selectedCountry.flag} {currencySettings.selectedCountry.currency}</option><option value="TWD">🇹🇼 TWD</option></select>
                             <div className="absolute right-3 top-3.5 pointer-events-none text-[#888] text-[10px]">▼</div>
                           </div>
@@ -1631,7 +1855,7 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
                       <div>
                         <label className="block text-xs font-bold text-[#888] mb-1">預算 / 費用</label>
                         <div className="flex gap-2">
-                          <div className="relative flex-1"><select value={formData.costType} onChange={(e) => setFormData({...formData, costType: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg pl-3 pr-8 py-2.5 text-[#3A3A3A] text-base appearance-none focus:outline-none focus:${theme.primaryBorder} h-10 font-bold`}><option value="FOREIGN">{currencySettings.selectedCountry.flag} {currencySettings.selectedCountry.currency}</option><option value="TWD">🇹🇼 TWD</option></select><div className="absolute right-3 top-3.5 pointer-events-none text-[#888] text-[10px]">▼</div></div>
+                          <div className="relative flex-[2.2]"><select value={formData.costType} onChange={(e) => setFormData({...formData, costType: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg pl-3 pr-8 py-2.5 text-[#3A3A3A] text-base appearance-none focus:outline-none focus:${theme.primaryBorder} h-10 font-bold`}><option value="FOREIGN">{currencySettings.selectedCountry.flag} {currencySettings.selectedCountry.currency}</option><option value="TWD">🇹🇼 TWD</option></select><div className="absolute right-3 top-3.5 pointer-events-none text-[#888] text-[10px]">▼</div></div>
                           <input type="number" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" placeholder="0" value={formData.cost === 0 ? '' : formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder} font-serif h-10`} />
                         </div>
                       </div>
@@ -1823,9 +2047,28 @@ export default function App() {
   const [activeProject, setActiveProject] = useState(null);
   const [currentThemeId, setCurrentThemeId] = useState('mori'); // Global theme state for Planner
   
-  // Initial Data
-  const [projects, setProjects] = useState([{ id: 1, name: '東京 5 日遊', lastModified: new Date().toISOString() }]);
-  const [allProjectsData, setAllProjectsData] = useState({ 1: generateNewProjectData('東京 5 日遊') });
+  // --- LocalStorage Logic ---
+  const [projects, setProjects] = useState(() => {
+    // Lazy initialization for projects
+    const savedProjects = localStorage.getItem('tripPlanner_projects');
+    return savedProjects ? JSON.parse(savedProjects) : [{ id: 1, name: '東京 5 日遊', lastModified: new Date().toISOString() }];
+  });
+
+  const [allProjectsData, setAllProjectsData] = useState(() => {
+    // Lazy initialization for all project data
+    const savedData = localStorage.getItem('tripPlanner_allData');
+    return savedData ? JSON.parse(savedData) : { 1: generateNewProjectData('東京 5 日遊') };
+  });
+
+  // Save to LocalStorage whenever state changes
+  useEffect(() => {
+    localStorage.setItem('tripPlanner_projects', JSON.stringify(projects));
+  }, [projects]);
+
+  useEffect(() => {
+    localStorage.setItem('tripPlanner_allData', JSON.stringify(allProjectsData));
+  }, [allProjectsData]);
+  // --------------------------
 
   const theme = THEMES[currentThemeId]; // Theme object for Planner
 
