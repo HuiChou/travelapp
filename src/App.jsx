@@ -1249,7 +1249,25 @@ const TripPlanner = ({
     updateCurrentList(list);
   };
 
-  const handleSettingsSubmit = (e) => { e.preventDefault(); const days = calculateDaysDiff(tempSettings.startDate, tempSettings.endDate); setTripSettings({ ...tempSettings, days }); setIsSettingsOpen(false); if (activeDay >= days) setActiveDay(0); };
+  const openSettingsModal = () => {
+    setTempSettings({
+      ...tripSettings,
+      title: tripSettings.title || '',
+      startDate: tripSettings.startDate || '',
+      endDate: tripSettings.endDate || '',
+      days: tripSettings.days || 1
+    });
+    setIsSettingsOpen(true);
+  };
+
+  const handleSettingsSubmit = (e) => { 
+    e.preventDefault(); 
+    const days = calculateDaysDiff(tempSettings.startDate, tempSettings.endDate); 
+    setTripSettings({ ...tempSettings, days }); 
+    setIsSettingsOpen(false); 
+    if (activeDay >= days) setActiveDay(0); 
+  };
+
   const handleStartDateChange = (e) => { const newStart = e.target.value; const newEnd = getNextDay(newStart); setTempSettings({ ...tempSettings, startDate: newStart, endDate: newEnd }); };
   const handleCurrencySubmit = (e) => { e.preventDefault(); setCurrencySettings({...tempCurrency}); setIsCurrencyModalOpen(false); };
   const handleAddCompanion = (e) => { e.preventDefault(); if (newCompanionName.trim() && !companions.includes(newCompanionName.trim())) { setCompanions([...companions, newCompanionName.trim()]); setNewCompanionName(''); }};
@@ -1389,7 +1407,7 @@ const TripPlanner = ({
               }} className={`p-2 rounded-full flex items-center gap-1.5 border border-transparent hover:${theme.border} ${theme.hover} ${theme.accent}`}><Coins size={18} /><span className="text-[10px] font-bold hidden sm:inline-block">{currencySettings?.selectedCountry?.currency || 'JPY'}</span></button>
               
               <button onClick={() => setIsCompanionModalOpen(true)} className={`p-2 rounded-full transition-colors ${theme.subText} ${theme.hover}`}><Users size={20} /></button>
-              <button onClick={() => { setTempSettings({...tripSettings}); setIsSettingsOpen(true); }} className={`p-2 rounded-full transition-colors ${theme.subText} ${theme.hover}`}><Settings size={20} /></button>
+              <button onClick={openSettingsModal} className={`p-2 rounded-full transition-colors ${theme.subText} ${theme.hover}`}><Settings size={20} /></button>
               
               <div className="relative">
                 <button onClick={() => setIsFileMenuOpen(!isFileMenuOpen)} className={`p-2 rounded-full transition-colors ${theme.subText} ${theme.hover}`}><FileText size={20} /></button>
@@ -1810,7 +1828,32 @@ const TripPlanner = ({
                 )}
               </form>
             </div>
-            <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] shrink-0`}><button type="button" onClick={() => setIsSettingsOpen(false)} className={`flex-1 py-2.5 text-xs font-bold text-[#888] hover:${theme.hover} rounded-lg`}>取消</button><button type="submit" form="settings-form" className={`flex-1 ${theme.primaryBg} text-white py-2.5 rounded-lg text-xs font-bold hover:opacity-90`}>完成</button></div>
+            <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] shrink-0`}>
+              <button type="submit" form="item-form" className={`w-full bg-[#3A3A3A] text-[#F9F8F6] py-3 rounded-lg font-bold text-sm hover:${theme.primaryBg} transition-colors`}>{editingItem ? '儲存' : '新增'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ... Settings, Currency, Companion modals ... same as before ... */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
+          <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border} animate-in zoom-in-95`}>
+            <div className="p-6 shrink-0 text-center mb-0"><h2 className="text-xl font-serif font-bold text-[#3A3A3A]">旅程設定</h2></div>
+            <div className="overflow-y-auto px-6 pb-6 flex-1">
+              <form id="settings-form" onSubmit={handleSettingsSubmit} className="space-y-5">
+                <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">旅程標題</label><input type="text" value={tempSettings.title || ''} onChange={e => setTempSettings({...tempSettings, title: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">出發日</label><input type="date" value={tempSettings.startDate || ''} onChange={handleStartDateChange} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
+                  <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">回程日</label><input type="date" value={tempSettings.endDate || ''} min={tempSettings.startDate || ''} onChange={(e) => setTempSettings({...tempSettings, endDate: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#888] mb-2 uppercase flex items-center gap-1"><Palette size={12}/> 顏色主題</label>
+                  <div className="flex gap-2 justify-between">{Object.values(THEMES).map((t) => (<button key={t.id} type="button" onClick={() => onChangeTheme(t.id)} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${t.bg} border ${t.id === theme.id ? `border-2 ${t.primaryBorder} scale-110 shadow-md` : 'border-gray-200'}`} title={t.label}><div className={`w-4 h-4 rounded-full ${t.primaryBg}`}></div></button>))}</div>
+                </div>
+                <div className={`text-center bg-[#F2F0EB] py-2 rounded-lg border border-dashed ${theme.border}`}><span className="text-xs text-[#888] font-bold">總天數: </span><span className={`text-sm font-serif font-bold ${theme.primary}`}>{calculateDaysDiff(tempSettings.startDate, tempSettings.endDate)} 天</span></div>
+              </form>
+            </div>
+            <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] flex gap-3 shrink-0`}><button type="button" onClick={() => setIsSettingsOpen(false)} className={`flex-1 py-2.5 text-xs font-bold text-[#888] hover:${theme.hover} rounded-lg`}>取消</button><button type="submit" form="settings-form" className={`flex-1 ${theme.primaryBg} text-white py-2.5 rounded-lg text-xs font-bold hover:opacity-90`}>完成</button></div>
           </div>
         </div>
       )}
@@ -1860,6 +1903,10 @@ const TripPlanner = ({
     </div>
   );
 };
+
+// ... (TravelHome and App components remain mostly the same, but the App component's file is included for completeness in a single file workflow if requested, but above is focused on TripPlannerApp.jsx contents)
+
+// Since I must output a single file, I will append the rest of the App component logic here to complete the file as requested.
 
 const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, onOpenProject, googleUser, handleGoogleLogin, handleGoogleLogout }) => {
   const [isHovered, setIsHovered] = useState(false);
