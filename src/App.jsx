@@ -884,7 +884,7 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
         date: tripSettings.startDate,
         category: expenseCategories[0]?.id || 'food',
         payer: 'Me', 
-        shares: companions,
+        shares: companions, 
         details: [] 
       });
     } else {
@@ -1306,7 +1306,7 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
                   const CatIcon = getIconComponent(cat.icon);
                   return (
                     <div key={cat.id} className={`draggable-item ${theme.card} border ${theme.border} p-4 rounded-xl flex items-center justify-between shadow-sm`} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd} onDragOver={(e) => e.preventDefault()}>
-                       <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-4">
                           <div className="text-[#CCC] cursor-grab active:cursor-grabbing"><GripVertical size={20} /></div>
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${cat.color || theme.hover} ${theme.primary} border border-[#F0F0F0]`}>
                              <CatIcon size={20} />
@@ -1315,11 +1315,11 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
                             <div className="text-sm font-bold text-[#3A3A3A]">{cat.label}</div>
                             <div className="text-[10px] text-[#999] font-mono">ID: {cat.id}</div>
                           </div>
-                       </div>
-                       <div className="flex gap-2">
+                        </div>
+                        <div className="flex gap-2">
                           <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); openCategoryEditModal(cat); }} className={`p-2 text-[#888] hover:${theme.primary} ${theme.hover} rounded-lg transition-colors`}><Edit3 size={18} /></button>
                           <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat.id); }} className={`p-2 text-[#888] hover:${theme.danger} hover:${theme.dangerBg} rounded-lg transition-colors`}><Trash2 size={18} /></button>
-                       </div>
+                        </div>
                     </div>
                   );
                 })}
@@ -1499,37 +1499,37 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
                <h2 className="text-lg font-bold font-serif text-[#3A3A3A]">{categoryFormData.isNew ? '新增類別' : '編輯類別'}</h2>
              </div>
              <div className="p-6 space-y-4 overflow-y-auto">
-                <div>
-                   <label className="block text-xs font-bold text-[#888] mb-1">類別 ID (唯一)</label>
-                   <input type="text" disabled={!categoryFormData.isNew} value={categoryFormData.id} onChange={e => setCategoryFormData({...categoryFormData, id: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-sm text-[#3A3A3A] focus:outline-none ${!categoryFormData.isNew ? 'opacity-50 cursor-not-allowed' : ''}`} />
-                </div>
-                <div>
-                   <label className="block text-xs font-bold text-[#888] mb-1">類別名稱</label>
-                   <input type="text" value={categoryFormData.label} onChange={e => setCategoryFormData({...categoryFormData, label: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-sm text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder}`} />
-                </div>
-                {categoryManagerTab === 'itinerary' && (
-                  <div>
-                    <label className="block text-xs font-bold text-[#888] mb-2">標籤顏色</label>
-                    <div className="grid grid-cols-8 gap-2">
-                       {CATEGORY_COLORS.map(color => (
-                         <button key={color} onClick={() => setCategoryFormData({...categoryFormData, color})} className={`w-8 h-8 rounded-full ${color} border ${categoryFormData.color === color ? 'border-2 border-[#5F6F52] scale-110' : 'border-[#E0E0E0]'}`}></button>
-                       ))}
-                    </div>
-                  </div>
-                )}
-                <div>
-                   <label className="block text-xs font-bold text-[#888] mb-2">圖示</label>
-                   <div className="grid grid-cols-6 gap-2 h-40 overflow-y-auto p-1 border rounded-lg bg-[#FAFAFA]">
-                      {Object.keys(ICON_REGISTRY).map(iconName => {
-                        const IconComp = ICON_REGISTRY[iconName];
-                        return (
-                          <button key={iconName} onClick={() => setCategoryFormData({...categoryFormData, icon: iconName})} className={`aspect-square flex items-center justify-center rounded hover:bg-[#EEE] ${categoryFormData.icon === iconName ? `${theme.primaryBg} text-white` : 'text-[#666]'}`}>
-                             <IconComp size={20} />
-                          </button>
-                        );
-                      })}
+               <div>
+                  <label className="block text-xs font-bold text-[#888] mb-1">類別 ID (唯一)</label>
+                  <input type="text" disabled={!categoryFormData.isNew} value={categoryFormData.id} onChange={e => setCategoryFormData({...categoryFormData, id: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none ${!categoryFormData.isNew ? 'opacity-50 cursor-not-allowed' : ''}`} />
+               </div>
+               <div>
+                  <label className="block text-xs font-bold text-[#888] mb-1">類別名稱</label>
+                  <input type="text" value={categoryFormData.label} onChange={e => setCategoryFormData({...categoryFormData, label: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder}`} />
+               </div>
+               {categoryManagerTab === 'itinerary' && (
+                 <div>
+                   <label className="block text-xs font-bold text-[#888] mb-2">標籤顏色</label>
+                   <div className="grid grid-cols-8 gap-2">
+                      {CATEGORY_COLORS.map(color => (
+                        <button key={color} onClick={() => setCategoryFormData({...categoryFormData, color})} className={`w-8 h-8 rounded-full ${color} border ${categoryFormData.color === color ? 'border-2 border-[#5F6F52] scale-110' : 'border-[#E0E0E0]'}`}></button>
+                      ))}
                    </div>
-                </div>
+                 </div>
+               )}
+               <div>
+                  <label className="block text-xs font-bold text-[#888] mb-2">圖示</label>
+                  <div className="grid grid-cols-6 gap-2 h-40 overflow-y-auto p-1 border rounded-lg bg-[#FAFAFA]">
+                     {Object.keys(ICON_REGISTRY).map(iconName => {
+                       const IconComp = ICON_REGISTRY[iconName];
+                       return (
+                         <button key={iconName} onClick={() => setCategoryFormData({...categoryFormData, icon: iconName})} className={`aspect-square flex items-center justify-center rounded hover:bg-[#EEE] ${categoryFormData.icon === iconName ? `${theme.primaryBg} text-white` : 'text-[#666]'}`}>
+                            <IconComp size={20} />
+                         </button>
+                       );
+                     })}
+                  </div>
+               </div>
              </div>
              <div className="p-4 border-t border-[#F0F0F0] flex gap-2">
                 <button onClick={() => setIsCategoryEditModalOpen(false)} className="flex-1 py-2 text-xs font-bold text-[#888] hover:bg-[#F0F0F0] rounded-lg">取消</button>
@@ -1560,9 +1560,9 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
                       })}
                     </div>
                     <div className="flex gap-4 items-end">
-                      <div className="w-[130px]"><label className="block text-xs font-bold text-[#888] mb-1">開始時間</label><input type="time" value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-sm text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder} h-10`} /></div>
+                      <div className="w-[130px]"><label className="block text-xs font-bold text-[#888] mb-1">開始時間</label><input type="time" value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder} h-10`} /></div>
                       <div className="flex flex-1 gap-2 items-end">
-                        <div className="w-[130px]"><label className="block text-xs font-bold text-[#888] mb-1">停留 (分)</label><input type="number" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="numeric" value={formData.duration === 0 ? '' : formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-sm text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder} h-10`} /></div>
+                        <div className="w-[130px]"><label className="block text-xs font-bold text-[#888] mb-1">停留 (分)</label><input type="number" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="numeric" value={formData.duration === 0 ? '' : formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder} h-10`} /></div>
                         <div className="flex flex-col gap-1 pb-0.5"><div className="flex gap-1"><button type="button" onClick={() => setFormData({...formData, duration: 30})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[3rem] text-center h-[18px] flex items-center justify-center`}>30分</button><button type="button" onClick={() => setFormData({...formData, duration: 60})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[3rem] text-center h-[18px] flex items-center justify-center`}>60分</button></div><div className="flex gap-1"><button type="button" onClick={() => setFormData({...formData, duration: 90})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[3rem] text-center h-[18px] flex items-center justify-center`}>90分</button><button type="button" onClick={() => setFormData({...formData, duration: 120})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[3rem] text-center h-[18px] flex items-center justify-center`}>120分</button></div></div>
                       </div>
                     </div>
@@ -1587,21 +1587,21 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
                       </div>
                       <div className="mb-3">
                         <label className="block text-xs font-bold text-[#888] mb-1">日期</label>
-                        <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-sm text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder}`} />
+                        <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder}`} />
                       </div>
                       <div className="flex gap-3">
-                        <div className="w-1/3"><input type="text" placeholder="地區" required value={formData.region} onChange={e => setFormData({...formData, region: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-sm font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div>
-                        <div className="flex-1"><input type="text" placeholder="項目名稱" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-sm font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div>
+                        <div className="w-1/3"><input type="text" placeholder="地區" required value={formData.region} onChange={e => setFormData({...formData, region: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-base font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div>
+                        <div className="flex-1"><input type="text" placeholder="項目名稱" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-base font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div>
                       </div>
                       {/* ... (Cost input and Split logic same as original) ... */}
                       <div>
                         <label className="block text-xs font-bold text-[#888] mb-1">預算 / 費用 (總額)</label>
                         <div className="flex gap-2">
                           <div className="relative flex-1">
-                            <select value={formData.costType} onChange={(e) => setFormData({...formData, costType: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg pl-3 pr-8 py-2.5 text-[#3A3A3A] text-sm appearance-none focus:outline-none focus:${theme.primaryBorder} h-10 font-bold`}><option value="FOREIGN">{currencySettings.selectedCountry.flag} {currencySettings.selectedCountry.currency}</option><option value="TWD">🇹🇼 TWD</option></select>
+                            <select value={formData.costType} onChange={(e) => setFormData({...formData, costType: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg pl-3 pr-8 py-2.5 text-[#3A3A3A] text-base appearance-none focus:outline-none focus:${theme.primaryBorder} h-10 font-bold`}><option value="FOREIGN">{currencySettings.selectedCountry.flag} {currencySettings.selectedCountry.currency}</option><option value="TWD">🇹🇼 TWD</option></select>
                             <div className="absolute right-3 top-3.5 pointer-events-none text-[#888] text-[10px]">▼</div>
                           </div>
-                          <input type="number" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" placeholder="0" value={formData.cost === 0 ? '' : formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-sm focus:outline-none focus:${theme.primaryBorder} font-serif h-10`} />
+                          <input type="number" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" placeholder="0" value={formData.cost === 0 ? '' : formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder} font-serif h-10`} />
                         </div>
                       </div>
                       <div className={`bg-[#F2F0EB] p-3 rounded-lg border ${theme.border}`}>
@@ -1609,10 +1609,10 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
                         <div className="space-y-2 mb-3">
                             {formData.details && formData.details.map((detail, idx) => (
                                 <div key={detail.id} className={`flex flex-wrap items-center gap-2 bg-white p-2 rounded border ${theme.border} shadow-sm text-xs`}>
-                                    <div className="relative min-w-[4.5rem]"><select value={detail.payer} onChange={(e) => updateSplitDetail(detail.id, 'payer', e.target.value)} className="w-full pl-6 pr-4 py-1 appearance-none bg-transparent font-bold text-[#3A3A3A] focus:outline-none cursor-pointer">{companions.map(c => <option key={c} value={c}>{c}</option>)}</select><div className={`absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full ${theme.border} flex items-center justify-center text-[8px] font-serif pointer-events-none`}>{detail.payer.charAt(0).toUpperCase()}</div></div>
+                                    <div className="relative min-w-[4.5rem]"><select value={detail.payer} onChange={(e) => updateSplitDetail(detail.id, 'payer', e.target.value)} className="w-full pl-6 pr-4 py-1 appearance-none bg-transparent font-bold text-[#3A3A3A] focus:outline-none cursor-pointer text-base">{companions.map(c => <option key={c} value={c}>{c}</option>)}</select><div className={`absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full ${theme.border} flex items-center justify-center text-[8px] font-serif pointer-events-none`}>{detail.payer.charAt(0).toUpperCase()}</div></div>
                                     <ArrowRight size={10} className="text-[#CCC]" />
-                                    <div className="relative min-w-[5rem]"><select value={detail.target} onChange={(e) => updateSplitDetail(detail.id, 'target', e.target.value)} className={`w-full pl-6 pr-4 py-1 appearance-none bg-transparent font-bold ${theme.primary} focus:outline-none cursor-pointer`}>{companions.map(c => <option key={c} value={c}>{c}</option>)}<option value="ALL">均攤</option></select><div className={`absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full ${theme.border} flex items-center justify-center text-[8px] font-serif pointer-events-none`}>{detail.target === 'ALL' ? <Users size={10} /> : detail.target.charAt(0).toUpperCase()}</div></div>
-                                    <div className="flex-1 flex items-center justify-end gap-1"><span className="text-[10px] text-[#888]">{currencySettings.selectedCountry.currency}</span><input type="number" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" value={detail.amount === 0 ? '' : detail.amount} onChange={(e) => updateSplitDetail(detail.id, 'amount', parseInt(e.target.value) || 0)} className={`w-16 text-right border-b ${theme.border} focus:${theme.primaryBorder} focus:outline-none bg-transparent font-bold`}/></div>
+                                    <div className="relative min-w-[5rem]"><select value={detail.target} onChange={(e) => updateSplitDetail(detail.id, 'target', e.target.value)} className={`w-full pl-6 pr-4 py-1 appearance-none bg-transparent font-bold ${theme.primary} focus:outline-none cursor-pointer text-base`}>{companions.map(c => <option key={c} value={c}>{c}</option>)}<option value="ALL">均攤</option></select><div className={`absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full ${theme.border} flex items-center justify-center text-[8px] font-serif pointer-events-none`}>{detail.target === 'ALL' ? <Users size={10} /> : detail.target.charAt(0).toUpperCase()}</div></div>
+                                    <div className="flex-1 flex items-center justify-end gap-1"><span className="text-[10px] text-[#888]">{currencySettings.selectedCountry.currency}</span><input type="number" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" value={detail.amount === 0 ? '' : detail.amount} onChange={(e) => updateSplitDetail(detail.id, 'amount', parseInt(e.target.value) || 0)} className={`w-16 text-right border-b ${theme.border} focus:${theme.primaryBorder} focus:outline-none bg-transparent font-bold text-base`}/></div>
                                     {formData.details.length > 1 && (<button type="button" onClick={() => removeSplitDetail(detail.id)} className={`text-[#C55A5A] hover:${theme.dangerBg} p-1 rounded`}><X size={12} /></button>)}
                                 </div>
                             ))}
@@ -1623,23 +1623,23 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
                 ) : (
                   <>
                     {(checklistTab === 'food' || checklistTab === 'shopping') ? (
-                      <div className="flex gap-3"><div className="w-1/3"><input type="text" placeholder="地區" required value={formData.region} onChange={e => setFormData({...formData, region: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-lg font-serif font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div><div className="flex-1"><input type="text" placeholder="店名 / 商品" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-lg font-serif font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div></div>
+                      <div className="flex gap-3"><div className="w-1/3"><input type="text" placeholder="地區" required value={formData.region} onChange={e => setFormData({...formData, region: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-base font-serif font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div><div className="flex-1"><input type="text" placeholder="店名 / 商品" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-base font-serif font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div></div>
                     ) : (
-                      <input type="text" placeholder={checklistTab === 'packing' && viewMode === 'checklist' ? "物品名稱" : "標題"} required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-lg font-serif font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} />
+                      <input type="text" placeholder={checklistTab === 'packing' && viewMode === 'checklist' ? "物品名稱" : "標題"} required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-base font-serif font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} />
                     )}
                     {(viewMode === 'itinerary' || checklistTab !== 'packing') && (
                       <div>
                         <label className="block text-xs font-bold text-[#888] mb-1">預算 / 費用</label>
                         <div className="flex gap-2">
-                          <div className="relative flex-1"><select value={formData.costType} onChange={(e) => setFormData({...formData, costType: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg pl-3 pr-8 py-2.5 text-[#3A3A3A] text-sm appearance-none focus:outline-none focus:${theme.primaryBorder} h-10 font-bold`}><option value="FOREIGN">{currencySettings.selectedCountry.flag} {currencySettings.selectedCountry.currency}</option><option value="TWD">🇹🇼 TWD</option></select><div className="absolute right-3 top-3.5 pointer-events-none text-[#888] text-[10px]">▼</div></div>
-                          <input type="number" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" placeholder="0" value={formData.cost === 0 ? '' : formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-sm focus:outline-none focus:${theme.primaryBorder} font-serif h-10`} />
+                          <div className="relative flex-1"><select value={formData.costType} onChange={(e) => setFormData({...formData, costType: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg pl-3 pr-8 py-2.5 text-[#3A3A3A] text-base appearance-none focus:outline-none focus:${theme.primaryBorder} h-10 font-bold`}><option value="FOREIGN">{currencySettings.selectedCountry.flag} {currencySettings.selectedCountry.currency}</option><option value="TWD">🇹🇼 TWD</option></select><div className="absolute right-3 top-3.5 pointer-events-none text-[#888] text-[10px]">▼</div></div>
+                          <input type="number" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" placeholder="0" value={formData.cost === 0 ? '' : formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder} font-serif h-10`} />
                         </div>
                       </div>
                     )}
                     {(viewMode === 'itinerary' || checklistTab !== 'packing') && (
                       <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-[#888]"><MapPin size={16} /><input type="text" placeholder="地點/地址" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} className={`flex-1 bg-transparent border-b ${theme.border} py-1 text-sm focus:outline-none focus:${theme.primaryBorder}`} /></div>
-                        <div className="flex items-center gap-2 text-[#888]"><Globe size={16} /><input type="url" placeholder="網站連結" value={formData.website} onChange={e => setFormData({...formData, website: e.target.value})} className={`flex-1 bg-transparent border-b ${theme.border} py-1 text-sm focus:outline-none focus:${theme.primaryBorder} placeholder:text-xs`} /></div>
+                        <div className="flex items-center gap-2 text-[#888]"><MapPin size={16} /><input type="text" placeholder="地點/地址" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} className={`flex-1 bg-transparent border-b ${theme.border} py-1 text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
+                        <div className="flex items-center gap-2 text-[#888]"><Globe size={16} /><input type="url" placeholder="網站連結" value={formData.website} onChange={e => setFormData({...formData, website: e.target.value})} className={`flex-1 bg-transparent border-b ${theme.border} py-1 text-base focus:outline-none focus:${theme.primaryBorder} placeholder:text-xs`} /></div>
                       </div>
                     )}
                   </>
@@ -1647,7 +1647,7 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
                 {(viewMode === 'itinerary' || checklistTab !== 'packing') && (
                   <div>
                     <label className="block text-xs font-bold text-[#888] mb-1">備註</label>
-                    <textarea rows={2} placeholder="備註..." value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-3 text-xs text-[#666] resize-none focus:outline-none focus:${theme.primaryBorder}`} />
+                    <textarea rows={2} placeholder="備註..." value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-3 text-base text-[#666] resize-none focus:outline-none focus:${theme.primaryBorder}`} />
                   </div>
                 )}
               </form>
@@ -1666,10 +1666,10 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
             <div className="p-6 shrink-0 text-center mb-0"><h2 className="text-xl font-serif font-bold text-[#3A3A3A]">旅程設定</h2></div>
             <div className="overflow-y-auto px-6 pb-6 flex-1">
               <form id="settings-form" onSubmit={handleSettingsSubmit} className="space-y-5">
-                <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">旅程標題</label><input type="text" value={tempSettings.title} onChange={e => setTempSettings({...tempSettings, title: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-sm focus:outline-none focus:${theme.primaryBorder}`} /></div>
+                <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">旅程標題</label><input type="text" value={tempSettings.title} onChange={e => setTempSettings({...tempSettings, title: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">出發日</label><input type="date" value={tempSettings.startDate} onChange={handleStartDateChange} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-sm focus:outline-none focus:${theme.primaryBorder}`} /></div>
-                  <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">回程日</label><input type="date" value={tempSettings.endDate} min={tempSettings.startDate} onChange={(e) => setTempSettings({...tempSettings, endDate: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-sm focus:outline-none focus:${theme.primaryBorder}`} /></div>
+                  <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">出發日</label><input type="date" value={tempSettings.startDate} onChange={handleStartDateChange} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
+                  <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">回程日</label><input type="date" value={tempSettings.endDate} min={tempSettings.startDate} onChange={(e) => setTempSettings({...tempSettings, endDate: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-[#888] mb-2 uppercase flex items-center gap-1"><Palette size={12}/> 顏色主題</label>
@@ -1690,8 +1690,8 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
             <div className="p-6 shrink-0 text-center mb-0"><div className={`w-12 h-12 bg-[#F2F0EB] rounded-full flex items-center justify-center mx-auto mb-3 ${theme.accent}`}><Calculator size={24} /></div><h2 className="text-xl font-serif font-bold text-[#3A3A3A]">通貨設定</h2></div>
             <div className="overflow-y-auto px-6 pb-6 flex-1">
               <form id="currency-form" onSubmit={handleCurrencySubmit} className="space-y-5">
-                <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">旅遊國家</label><div className="relative"><select value={tempCurrency?.selectedCountry?.code || ''} onChange={(e) => { const country = COUNTRY_OPTIONS.find(c => c.code === e.target.value); setTempCurrency({ ...tempCurrency, selectedCountry: country, exchangeRate: country.defaultRate }); }} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-3 text-[#3A3A3A] text-sm appearance-none focus:outline-none focus:${theme.primaryBorder}`}>{COUNTRY_OPTIONS.map(c => <option key={c.code} value={c.code}>{c.flag} {c.name} {c.currency}</option>)}</select><div className="absolute right-3 top-3.5 pointer-events-none text-[#888]">▼</div></div></div>
-                <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">匯率</label><div className="flex items-center gap-3 justify-center"><span className={`text-sm font-bold ${theme.primary} whitespace-nowrap`}>1 {tempCurrency?.selectedCountry?.currency || '???'} =</span><input type="number" step="0.0001" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" value={tempCurrency?.exchangeRate || 0} onChange={e => setTempCurrency({...tempCurrency, exchangeRate: parseFloat(e.target.value)})} className={`w-28 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] font-bold text-center focus:outline-none focus:${theme.primaryBorder}`} /><span className={`text-sm font-bold ${theme.primary}`}>TWD</span></div></div>
+                <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">旅遊國家</label><div className="relative"><select value={tempCurrency?.selectedCountry?.code || ''} onChange={(e) => { const country = COUNTRY_OPTIONS.find(c => c.code === e.target.value); setTempCurrency({ ...tempCurrency, selectedCountry: country, exchangeRate: country.defaultRate }); }} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-3 text-[#3A3A3A] text-base appearance-none focus:outline-none focus:${theme.primaryBorder}`}>{COUNTRY_OPTIONS.map(c => <option key={c.code} value={c.code}>{c.flag} {c.name} {c.currency}</option>)}</select><div className="absolute right-3 top-3.5 pointer-events-none text-[#888]">▼</div></div></div>
+                <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">匯率</label><div className="flex items-center gap-3 justify-center"><span className={`text-sm font-bold ${theme.primary} whitespace-nowrap`}>1 {tempCurrency?.selectedCountry?.currency || '???'} =</span><input type="number" step="0.0001" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" value={tempCurrency?.exchangeRate || 0} onChange={e => setTempCurrency({...tempCurrency, exchangeRate: parseFloat(e.target.value)})} className={`w-28 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] font-bold text-center focus:outline-none focus:${theme.primaryBorder} text-base`} /><span className={`text-sm font-bold ${theme.primary}`}>TWD</span></div></div>
               </form>
             </div>
             <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] flex gap-3 shrink-0`}><button type="button" onClick={() => setIsCurrencyModalOpen(false)} className={`flex-1 py-2.5 text-xs font-bold text-[#888] hover:${theme.hover} rounded-lg`}>取消</button><button type="submit" form="currency-form" className={`flex-1 ${theme.primaryBg} text-white py-2.5 rounded-lg text-xs font-bold hover:opacity-90`}>確認設定</button></div>
@@ -1706,13 +1706,13 @@ const TripPlanner = ({ projectData, onBack, onSaveData, theme, onChangeTheme }) 
             <div className="p-6 shrink-0 text-center mb-0"><div className={`w-12 h-12 bg-[#F2F0EB] rounded-full flex items-center justify-center mx-auto mb-3 ${theme.accent}`}><Users size={24} /></div><h2 className="text-xl font-serif font-bold text-[#3A3A3A]">旅伴管理</h2></div>
             <div className="overflow-y-auto px-6 pb-6 flex-1">
               <form id="companion-form" onSubmit={handleAddCompanion} className="space-y-5">
-                <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">新增成員</label><div className="flex gap-2"><input type="text" placeholder="名字..." value={newCompanionName} onChange={(e) => setNewCompanionName(e.target.value)} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-sm focus:outline-none focus:${theme.primaryBorder}`} /><button type="submit" className="bg-[#3A3A3A] text-white px-4 rounded-lg hover:opacity-90"><Plus size={20} /></button></div></div>
+                <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">新增成員</label><div className="flex gap-2"><input type="text" placeholder="名字..." value={newCompanionName} onChange={(e) => setNewCompanionName(e.target.value)} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /><button type="submit" className="bg-[#3A3A3A] text-white px-4 rounded-lg hover:opacity-90"><Plus size={20} /></button></div></div>
                 <div>
                   <div className="flex justify-between items-end mb-1.5"><label className="block text-xs font-bold text-[#888] uppercase">目前成員</label>{companions.length > 0 && <button type="button" onClick={handleClearAllCompanions} className={`text-[10px] text-[#C55A5A] hover:${theme.dangerBg} px-2 py-1 rounded flex items-center gap-1`}><Trash2 size={12} />全て削除</button>}</div>
                   <div className={`bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 space-y-2 max-h-48 overflow-y-auto`}>
                     {companions.length === 0 ? <div className="text-center py-4 text-[#AAA] text-xs">無</div> : companions.map((c, i) => (
                       <div key={`${c}-${i}`} className={`flex items-center justify-between p-2 bg-white rounded shadow-sm border ${theme.border}`}>
-                        <div className="flex items-center gap-3 flex-1 min-w-0"><div className={`w-8 h-8 rounded-full ${getAvatarColor(i)} flex items-center justify-center ${theme.primary} shrink-0 border-2 border-white shadow-sm font-serif font-bold text-sm`}>{c.charAt(0).toUpperCase()}</div>{editingCompanionIndex === i ? <input type="text" value={editingCompanionName} onChange={(e) => setEditingCompanionName(e.target.value)} className={`flex-1 border-b ${theme.primaryBorder} outline-none text-sm text-[#3A3A3A] py-0.5 font-serif`} autoFocus onBlur={() => saveEditCompanion(i)} onKeyDown={(e) => {if(e.key==='Enter'){e.preventDefault();saveEditCompanion(i)}}} /> : <span className={`text-sm font-bold text-[#3A3A3A] truncate cursor-pointer hover:${theme.primary} font-serif`} onClick={() => startEditCompanion(i, c)}>{c}</span>}</div>
+                        <div className="flex items-center gap-3 flex-1 min-w-0"><div className={`w-8 h-8 rounded-full ${getAvatarColor(i)} flex items-center justify-center ${theme.primary} shrink-0 border-2 border-white shadow-sm font-serif font-bold text-sm`}>{c.charAt(0).toUpperCase()}</div>{editingCompanionIndex === i ? <input type="text" value={editingCompanionName} onChange={(e) => setEditingCompanionName(e.target.value)} className={`flex-1 border-b ${theme.primaryBorder} outline-none text-base text-[#3A3A3A] py-0.5 font-serif`} autoFocus onBlur={() => saveEditCompanion(i)} onKeyDown={(e) => {if(e.key==='Enter'){e.preventDefault();saveEditCompanion(i)}}} /> : <span className={`text-sm font-bold text-[#3A3A3A] truncate cursor-pointer hover:${theme.primary} font-serif`} onClick={() => startEditCompanion(i, c)}>{c}</span>}</div>
                         <div className="flex gap-1 ml-2">{editingCompanionIndex === i ? <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => saveEditCompanion(i)} className={`${theme.primary} hover:${theme.hover} p-1.5 rounded`}><Check size={14} /></button> : <button type="button" onClick={() => handleRemoveCompanion(i)} className={`text-[#C55A5A] hover:${theme.dangerBg} p-1.5 rounded`}><Minus size={14} /></button>}</div>
                       </div>
                     ))}
