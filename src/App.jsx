@@ -8,7 +8,7 @@ import {
   Download, Upload, Loader2, FileText, LayoutList, Palmtree, Tent, 
   Ticket, Bus, Car, Ship, Music, Gamepad2, Gift, Shirt, Briefcase, 
   Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
-  Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2
+  Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2, RefreshCw
 } from 'lucide-react';
 
 // --- Icon Registry for Dynamic Usage ---
@@ -22,7 +22,8 @@ const ICON_REGISTRY = {
 
 // --- Google API Config ---
 const GOOGLE_CLIENT_ID = "456137719976-dp4uin8ae10f332qbhqm447nllr2u4ec.apps.googleusercontent.com";
-const SCOPES = "https://www.googleapis.com/auth/spreadsheets";
+// Added drive.file scope to search and overwrite existing files
+const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file";
 
 // --- Initial Default Categories ---
 const DEFAULT_ITINERARY_CATEGORIES = [
@@ -382,6 +383,7 @@ const TripPlanner = ({
   const fileInputRef = useRef(null);
   const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
 
   useEffect(() => {
     if (window.XLSX) {
@@ -396,18 +398,31 @@ const TripPlanner = ({
     return () => {}
   }, []);
 
-  const handleSaveToGoogleSheet = async () => {
+  // --- Auto Save Logic ---
+  useEffect(() => {
+      // Only auto-save if logged in and API is ready
+      if (!googleUser || !gapiInited) return;
+
+      const timer = setTimeout(() => {
+          handleSaveToGoogleSheet(true); // silent = true
+      }, 5000); // 5 seconds debounce
+
+      return () => clearTimeout(timer);
+  }, [tripSettings, itineraries, expenses, packingList, shoppingList, foodList, googleUser, gapiInited]);
+
+  const handleSaveToGoogleSheet = async (isSilent = false) => {
       if (!googleUser || !gapiInited) {
-          alert("請先在首頁登入 Google 帳號。");
+          if (!isSilent) alert("請先在首頁登入 Google 帳號。");
           return;
       }
       
-      setIsSyncing(true);
+      if (!isSilent) setIsSyncing(true);
+      else setIsAutoSaving(true);
+
       try {
           const title = `TravelApp_${tripSettings.title}`;
           
-          // 1. Prepare Data Arrays (Same logic as Excel Export)
-          // Overview
+          // 1. Prepare Data
           const overviewRows = [
              ["項目", "內容", "", "", "參考：旅行國家", "參考：貨幣代碼"],
              ["專案標題", tripSettings.title],
@@ -418,7 +433,6 @@ const TripPlanner = ({
              ["貨幣代碼", currencySettings.selectedCountry.currency],
              ["匯率 (1外幣 = TWD)", currencySettings.exchangeRate]
           ];
-          // Fill reference columns
           COUNTRY_OPTIONS.forEach((country, index) => {
              const rowIndex = index + 1;
              if (!overviewRows[rowIndex]) overviewRows[rowIndex] = ["", "", "", "", "", ""];
@@ -427,7 +441,6 @@ const TripPlanner = ({
              overviewRows[rowIndex][5] = country.currency;
           });
 
-          // Itinerary
           const itineraryRows = [["Day", "時間", "持續時間(分)", "類型", "標題", "地點", "費用 (外幣)", "備註", "", "參考：類型選項"]];
           const sortedDays = Object.keys(itineraries).sort((a,b) => parseInt(a)-parseInt(b));
           sortedDays.forEach(dayIndex => {
@@ -437,7 +450,6 @@ const TripPlanner = ({
               itineraryRows.push([`Day ${parseInt(dayIndex) + 1}`, item.time, item.duration || 60, cat.label, item.title, item.location || "", item.cost || 0, item.notes || ""]);
             });
           });
-          // Fill cat ref
           itineraryCategories.forEach((cat, index) => {
              const rowIndex = index + 1;
              if (!itineraryRows[rowIndex]) itineraryRows[rowIndex] = new Array(10).fill("");
@@ -445,7 +457,6 @@ const TripPlanner = ({
              itineraryRows[rowIndex][9] = cat.label;
           });
 
-          // Lists
           const packingRows = [["物品名稱", "狀態"]];
           packingList.forEach(item => packingRows.push([item.title, item.completed ? "已完成" : "未完成"]));
 
@@ -455,14 +466,12 @@ const TripPlanner = ({
           const foodRows = [["地區", "餐廳名稱", "地點/地址", "預估費用", "完成狀態", "備註"]];
           foodList.forEach(item => foodRows.push([item.region || "", item.title, item.location || "", item.cost || 0, item.completed ? "已吃" : "未吃", item.notes || ""]));
 
-          // Expenses
           const expenseRows = [["日期", "地區", "類別", "項目", "地點", "付款人", "總金額 (外幣)", "分攤詳情", "", "參考：費用類別"]];
           expenses.forEach(item => {
             const cat = expenseCategories.find(c => c.id === item.category) || { label: item.category };
             let splitStr = item.details?.map(d => `${d.target === 'ALL' ? '全員' : d.target}: ${d.amount}`).join(", ") || `分攤: ${item.shares.join(", ")}`;
             expenseRows.push([item.date, item.region || "", cat.label, item.title, item.location || "", item.payer, item.cost, splitStr]);
           });
-          // Fill exp cat ref
           expenseCategories.forEach((cat, index) => {
              const rowIndex = index + 1;
              if (!expenseRows[rowIndex]) expenseRows[rowIndex] = new Array(10).fill("");
@@ -470,30 +479,48 @@ const TripPlanner = ({
              expenseRows[rowIndex][9] = cat.label;
           });
 
-          // Categories
           const categoryRows = [["類型", "ID", "名稱", "圖示", "顏色"]];
           itineraryCategories.forEach(c => categoryRows.push(["行程", c.id, c.label, c.icon, c.color]));
           expenseCategories.forEach(c => categoryRows.push(["費用", c.id, c.label, c.icon, ""]));
 
-          // 2. Create Spreadsheet with specific sheets
-          const createResponse = await window.gapi.client.sheets.spreadsheets.create({
-              resource: {
-                  properties: { title: title },
-                  sheets: [
-                      { properties: { title: '專案概覽' } },
-                      { properties: { title: '行程表' } },
-                      { properties: { title: '行李' } },
-                      { properties: { title: '購物' } },
-                      { properties: { title: '美食' } },
-                      { properties: { title: '費用' } },
-                      { properties: { title: '管理類別' } }
-                  ]
-              }
-          });
+          const sheetStructure = {
+              properties: { title: title },
+              sheets: [
+                  { properties: { title: '專案概覽' } },
+                  { properties: { title: '行程表' } },
+                  { properties: { title: '行李' } },
+                  { properties: { title: '購物' } },
+                  { properties: { title: '美食' } },
+                  { properties: { title: '費用' } },
+                  { properties: { title: '管理類別' } }
+              ]
+          };
+
+          // 2. Check if file exists (Find or Create)
+          // Search for file not in trash with matching name and mimeType
+          const q = `name = '${title}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
+          const searchRes = await window.gapi.client.drive.files.list({ q, fields: 'files(id, name)' });
           
-          const spreadsheetId = createResponse.result.spreadsheetId;
+          let spreadsheetId;
           
-          // 3. Write Data using batchUpdate
+          if (searchRes.result.files && searchRes.result.files.length > 0) {
+              // Found existing file - Overwrite
+              spreadsheetId = searchRes.result.files[0].id;
+              
+              // Clear old content to avoid mixing data if new list is shorter
+              await window.gapi.client.sheets.spreadsheets.values.batchClear({
+                  spreadsheetId,
+                  resource: { ranges: ["專案概覽", "行程表", "行李", "購物", "美食", "費用", "管理類別"] }
+              });
+          } else {
+              // Create new file
+              const createResponse = await window.gapi.client.sheets.spreadsheets.create({
+                  resource: sheetStructure
+              });
+              spreadsheetId = createResponse.result.spreadsheetId;
+          }
+          
+          // 3. Write Data
           await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
               spreadsheetId: spreadsheetId,
               resource: {
@@ -510,13 +537,18 @@ const TripPlanner = ({
               }
           });
           
-          alert(`同步成功！\n已建立檔案：${title}\n(結構與 Excel 匯出一致)`);
+          if (!isSilent) alert(`同步成功！\n檔案：${title}\n(已覆蓋更新)`);
 
       } catch (error) {
           console.error("Error saving to Google Sheets:", error);
-          alert("儲存失敗，請確認您的 Google 帳號權限或網路連線。");
+          if (error.status === 401 || error.status === 403) {
+             if (!isSilent) alert("授權過期，請重新登入 Google。");
+          } else {
+             if (!isSilent) alert("儲存失敗，請檢查網路連線。");
+          }
       } finally {
           setIsSyncing(false);
+          setIsAutoSaving(false);
       }
   };
 
@@ -1300,7 +1332,18 @@ const TripPlanner = ({
                   </div>
                </div>
             </div>
-            <div className="flex gap-2 shrink-0 relative">
+            <div className="flex gap-2 shrink-0 relative items-center">
+              {/* Cloud Sync Status Indicator */}
+              {googleUser && (
+                  <div className="hidden sm:flex items-center gap-1 mr-1">
+                      {isAutoSaving || isSyncing ? (
+                          <div className="flex items-center gap-1 text-[10px] text-[#A98467] font-bold"><Loader2 size={12} className="animate-spin"/> 儲存中</div>
+                      ) : (
+                          <div className="flex items-center gap-1 text-[10px] text-[#5F6F52] font-bold opacity-70"><Cloud size={12}/> 已同步</div>
+                      )}
+                  </div>
+              )}
+
               <button onClick={() => { 
                 const safeCurrency = currencySettings?.selectedCountry ? currencySettings : DEFAULT_CURRENCY_SETTINGS;
                 setTempCurrency({...safeCurrency}); 
@@ -1324,8 +1367,8 @@ const TripPlanner = ({
                       </div>
                       
                       <button onClick={() => { handleSaveToGoogleSheet(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 text-[#3A3A3A]`} disabled={isSyncing}>
-                        {isSyncing ? <Loader2 size={16} className="animate-spin text-[#3A3A3A]"/> : <CloudUpload size={16} className={theme.primary}/>} 
-                        {isSyncing ? "同步中..." : "備份到 Google Sheets"}
+                        {isSyncing ? <Loader2 size={16} className="animate-spin text-[#3A3A3A]"/> : <RefreshCw size={16} className={theme.primary}/>} 
+                        {isSyncing ? "同步中..." : "立即手動同步"}
                       </button>
 
                       <div className={`my-1 border-b ${theme.border}`}></div>
@@ -1929,14 +1972,23 @@ export default function App() {
   const [googleUser, setGoogleUser] = useState(null);
 
   useEffect(() => {
+    // Check for stored token on load
+    const storedToken = localStorage.getItem('google_access_token');
+    if (storedToken) {
+        setGoogleUser({ accessToken: storedToken });
+    }
+
     const loadGapi = () => {
         const script = document.createElement('script');
         script.src = "https://apis.google.com/js/api.js";
         script.onload = () => {
             window.gapi.load('client', () => {
                 window.gapi.client.init({}).then(() => {
-                   window.gapi.client.load('https://sheets.googleapis.com/$discovery/rest?version=v4')
-                       .then(() => setGapiInited(true));
+                   // Load Sheets AND Drive API
+                   Promise.all([
+                       window.gapi.client.load('https://sheets.googleapis.com/$discovery/rest?version=v4'),
+                       window.gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest')
+                   ]).then(() => setGapiInited(true));
                 });
             });
         };
@@ -1965,6 +2017,8 @@ export default function App() {
                 callback: (tokenResponse) => {
                     if (tokenResponse && tokenResponse.access_token) {
                         setGoogleUser({ accessToken: tokenResponse.access_token });
+                        // Persist token
+                        localStorage.setItem('google_access_token', tokenResponse.access_token);
                     }
                 },
             });
@@ -1977,6 +2031,7 @@ export default function App() {
 
   const handleGoogleLogin = () => {
       if (tokenClient) {
+          // Trigger silent prompt or popup if needed (Implicit grant)
           tokenClient.requestAccessToken();
       } else {
           alert("Google 服務尚未載入完成，請稍候再試。");
@@ -1988,10 +2043,12 @@ export default function App() {
       if (token) {
           window.google.accounts.oauth2.revoke(token, () => {
               setGoogleUser(null);
+              localStorage.removeItem('google_access_token');
               alert("已登出 Google 帳號");
           });
       } else {
           setGoogleUser(null);
+          localStorage.removeItem('google_access_token');
       }
   };
 
