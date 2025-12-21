@@ -1596,7 +1596,6 @@ const TripPlanner = ({
                )}
                <div className="min-w-0 flex-1">
                   <h1 className="text-xl md:text-2xl font-serif font-bold tracking-wide text-[#3A3A3A] flex items-center gap-2 truncate pr-2">
-                    <div className="shrink-0"><AppLogo theme={theme} /></div>
                     <span className="truncate">{tripSettings.title}</span>
                   </h1>
                   <div className={`text-xs font-serif ${theme.subText} mt-1 tracking-widest uppercase pl-1 flex items-center gap-2 truncate`}>
@@ -2220,7 +2219,7 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
                     `}>
                       {project.name}
                     </span>
-                    <span className={`text-[10px] sm:text-xs font-sans tracking-widest ${isClicking ? 'text-white/80' : 'text-[#888888]'}`}>
+                    <span className={`text-[10px] sm:text-xs font-sans tracking-widest whitespace-nowrap ${isClicking ? 'text-white/80' : 'text-[#888888]'}`}>
                        {startDate} ⇢ {endDate} <span className="mx-1 opacity-40">|</span> {formatLastModified(project.lastModified)}
                     </span>
                   </div>
