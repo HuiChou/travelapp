@@ -1948,10 +1948,16 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
           <p className="text-[#888888] text-sm md:text-base tracking-[0.4em] font-light uppercase mb-8">SELECT YOUR JOURNEY</p>
           <div className="w-full max-w-sm flex flex-col gap-4 my-4">
             {projects.map((project) => {
-              const projectThemeId = allProjectsData[project.id]?.themeId || 'mori';
+              // Retrieve project-specific theme
+              const pData = allProjectsData[project.id] || {};
+              const settings = pData.tripSettings || {};
+              const projectThemeId = pData.themeId || 'mori';
               const pTheme = THEMES[projectThemeId];
               const isClicking = clickingId === project.id;
               
+              const startDate = settings.startDate ? settings.startDate.replace(/-/g, '/') : '????/??/??';
+              const endDate = settings.endDate ? settings.endDate.replace(/-/g, '/') : '????/??/??';
+
               return (
                 <div 
                   key={project.id} 
@@ -1960,6 +1966,7 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
                     ${isClicking ? `${pTheme.primaryBg} border-transparent scale-[0.98]` : `bg-[#FFFFFF] ${theme.border} hover:bg-[#F2F0EB]`}
                   `}
                 >
+                  {/* Hover indicator strip using Project's color */}
                   <div className={`absolute left-0 top-0 bottom-0 w-1 ${pTheme.primaryBg.replace('bg-', 'bg-opacity-80 bg-')} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}></div>
                   
                   <div className="flex flex-col items-start gap-1 pl-2">
@@ -1968,13 +1975,14 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
                     `}>
                       {project.name}
                     </span>
-                    <span className={`text-xs font-sans tracking-widest ${isClicking ? 'text-white/80' : 'text-[#888888]'}`}>
-                      {formatLastModified(project.lastModified)}
+                    <span className={`text-[10px] sm:text-xs font-sans tracking-widest ${isClicking ? 'text-white/80' : 'text-[#888888]'}`}>
+                       {startDate} ⇢ {endDate} <span className="mx-1 opacity-40">|</span> {formatLastModified(project.lastModified)}
                     </span>
                   </div>
                   
                   <div className="flex items-center gap-2">
                     <ChevronRight size={16} className={`transition-all duration-300 ${isClicking ? 'text-white' : 'text-[#E6E2D3] group-hover:opacity-0 absolute right-8'}`} />
+                    {/* Delete button only shows on hover, hides on click to avoid confusion */}
                     {!isClicking && (
                       <button 
                         onClick={(e) => onDeleteProject(e, project.id)} 
