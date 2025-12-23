@@ -23,7 +23,6 @@ const ICON_REGISTRY = {
 
 // --- Google API Config ---
 const GOOGLE_CLIENT_ID = "456137719976-dp4uin8ae10f332qbhqm447nllr2u4ec.apps.googleusercontent.com";
-// SCOPES: Includes drive.file to allow searching, renaming, and deleting files created by this app
 const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file";
 
 // --- Initial Default Categories ---
@@ -170,12 +169,6 @@ const COUNTRY_OPTIONS = [
   { code: 'MY', name: '馬來西亞', flag: '🇲🇾', currency: 'MYR', symbol: 'RM', defaultRate: 6.8 },
 ];
 
-const AppLogo = ({ theme }) => (
-  <div className={`w-9 h-9 rounded-full flex items-center justify-center shadow-md ${theme.primaryBg} text-white border border-white/20`}>
-    <Plane size={18} className="-rotate-45 translate-x-0.5 translate-y-0.5" strokeWidth={2.5} />
-  </div>
-);
-
 // --- Helpers ---
 
 const timeToMinutes = (timeStr) => {
@@ -237,7 +230,7 @@ const getAvatarColor = (index) => {
 const solveDebts = (balances) => {
   let debtors = [];
   let creditors = [];
-  
+   
   Object.entries(balances).forEach(([name, data]) => {
     const amount = data.balance;
     if (amount < -1) debtors.push({ name, amount });
@@ -272,13 +265,13 @@ const formatLastModified = (isoString) => {
   const date = new Date(isoString);
   const utc8Time = date.getTime() + (8 * 60 * 60 * 1000); 
   const utc8Date = new Date(utc8Time);
-  
+   
   const yyyy = utc8Date.getUTCFullYear();
   const mm = String(utc8Date.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(utc8Date.getUTCDate()).padStart(2, '0');
   const HH = String(utc8Date.getUTCHours()).padStart(2, '0');
   const MM = String(utc8Date.getUTCMinutes()).padStart(2, '0');
-  
+   
   return `${yyyy}/${mm}/${dd} ${HH}:${MM}`;
 };
 
@@ -363,13 +356,13 @@ const TripPlanner = ({
 }) => {
   const [viewMode, setViewMode] = useState('itinerary');
   const [categoryManagerTab, setCategoryManagerTab] = useState('itinerary');
-  
+   
   const DEFAULT_CURRENCY_SETTINGS = { selectedCountry: COUNTRY_OPTIONS[0], exchangeRate: COUNTRY_OPTIONS[0].defaultRate };
-  
+   
   const [tripSettings, setTripSettings] = useState(projectData?.tripSettings || generateNewProjectData('Temp').tripSettings);
   const [companions, setCompanions] = useState(Array.isArray(projectData?.companions) ? projectData.companions : ['Me']);
   const [currencySettings, setCurrencySettings] = useState(projectData?.currencySettings?.selectedCountry ? projectData.currencySettings : DEFAULT_CURRENCY_SETTINGS);
-  
+   
   const [activeDay, setActiveDay] = useState(0); 
   const [itineraries, setItineraries] = useState(projectData?.itineraries || {});
   const [checklistTab, setChecklistTab] = useState('packing');
@@ -380,7 +373,7 @@ const TripPlanner = ({
 
   const [itineraryCategories, setItineraryCategories] = useState(projectData?.categories?.itinerary || DEFAULT_ITINERARY_CATEGORIES);
   const [expenseCategories, setExpenseCategories] = useState(projectData?.categories?.expense || DEFAULT_EXPENSE_CATEGORIES);
-  
+   
   // Track Google Drive File ID locally for this session
   const [googleDriveFileId, setGoogleDriveFileId] = useState(projectData?.googleDriveFileId || null);
 
@@ -427,7 +420,7 @@ const TripPlanner = ({
       try {
           const title = `TravelApp_${tripSettings.title}`;
           
-          // 1. Prepare Data (same as before)
+          // 1. Prepare Data
           const overviewRows = [
              ["項目", "內容", "", "", "參考：旅行國家", "參考：貨幣代碼"],
              ["專案標題", tripSettings.title],
@@ -515,7 +508,6 @@ const TripPlanner = ({
                   
                   if (!fileRes.result.trashed) {
                       fileExists = true;
-                      // RENAME LOGIC: If title changed, update cloud file name
                       if (fileRes.result.name !== title) {
                           await window.gapi.client.drive.files.update({
                               fileId: spreadsheetId,
@@ -659,7 +651,7 @@ const TripPlanner = ({
             <td>${item.date}</td>
             <td><span class="tag">${cat.label}</span></td>
             <td>${item.title}</td>
-            <td>${item.payer}</td>
+            <td>${item.payer === 'EACH' ? '各付' : item.payer}</td>
             <td class="amount">${item.currency || ''} ${formatMoney(item.cost)}</td>
           </tr>`;
         });
@@ -813,9 +805,8 @@ const TripPlanner = ({
             setCurrencySettings({ selectedCountry, exchangeRate });
         }
 
-        // 5. Parse Categories (管理類別) - MUST be before parsing other sheets to populate IDs
+        // 5. Parse Categories (管理類別)
         const wsCategories = wb.Sheets["管理類別"];
-        // Temporary storage for imported categories to use during this import session
         let currentItinCats = [...itineraryCategories];
         let currentExpCats = [...expenseCategories];
 
@@ -851,7 +842,7 @@ const TripPlanner = ({
             }
         }
 
-        // Helper maps using the (potentially updated) categories
+        // Helper maps
         const itinLabelToId = {};
         currentItinCats.forEach(c => itinLabelToId[c.label] = c.id);
         const expLabelToId = {};
@@ -887,7 +878,7 @@ const TripPlanner = ({
             setItineraries(newItineraries);
         }
 
-        // 3. Parse Lists (Packing, Shopping, Food)
+        // 3. Parse Lists
         const parseList = (sheetName, mapFn) => {
             const ws = wb.Sheets[sheetName];
             if (!ws) return [];
@@ -1009,16 +1000,12 @@ const TripPlanner = ({
       ["匯率 (1外幣 = TWD)", currencySettings.exchangeRate]
     ];
 
-    // 填充概覽參考選單 (E, F 欄位)
     COUNTRY_OPTIONS.forEach((country, index) => {
-      const rowIndex = index + 1; // 標題在第0列
-      // 確保該列存在
+      const rowIndex = index + 1;
       if (!overviewData[rowIndex]) {
         overviewData[rowIndex] = ["", "", "", "", "", ""];
       }
-      // 確保該列長度足夠
       while (overviewData[rowIndex].length < 6) overviewData[rowIndex].push("");
-      
       overviewData[rowIndex][4] = country.name;
       overviewData[rowIndex][5] = country.currency;
     });
@@ -1031,7 +1018,6 @@ const TripPlanner = ({
       ["Day", "時間", "持續時間(分)", "類型", "標題", "地點", "費用 (外幣)", "備註", "", "參考：類型選項"]
     ];
     
-    // Sort days
     const sortedDays = Object.keys(itineraries).sort((a,b) => parseInt(a)-parseInt(b));
     sortedDays.forEach(dayIndex => {
       const dayItems = itineraries[dayIndex] || [];
@@ -1050,7 +1036,6 @@ const TripPlanner = ({
       });
     });
 
-    // 填充行程參考選單 (J 欄位 index 9)
     itineraryCategories.forEach((cat, index) => {
         const rowIndex = index + 1;
         if (!itineraryRows[rowIndex]) {
@@ -1063,7 +1048,7 @@ const TripPlanner = ({
     const wsItinerary = XLSX.utils.aoa_to_sheet(itineraryRows);
     XLSX.utils.book_append_sheet(wb, wsItinerary, "行程表");
 
-    // 3. Checklists (Packing, Shopping, Food)
+    // 3. Checklists
     const packingRows = [["物品名稱", "狀態"]];
     packingList.forEach(item => packingRows.push([item.title, item.completed ? "已完成" : "未完成"]));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(packingRows), "行李");
@@ -1100,7 +1085,6 @@ const TripPlanner = ({
       ]);
     });
 
-    // 填充費用參考選單 (J 欄位 index 9)
     expenseCategories.forEach((cat, index) => {
         const rowIndex = index + 1;
         if (!expenseRows[rowIndex]) {
@@ -1113,7 +1097,7 @@ const TripPlanner = ({
     const wsExpenses = XLSX.utils.aoa_to_sheet(expenseRows);
     XLSX.utils.book_append_sheet(wb, wsExpenses, "費用");
 
-    // 7. 管理類別 Sheet (New)
+    // 7. 管理類別 Sheet
     const categoryRows = [["類型", "ID", "名稱", "圖示", "顏色"]];
     itineraryCategories.forEach(c => categoryRows.push(["行程", c.id, c.label, c.icon, c.color]));
     expenseCategories.forEach(c => categoryRows.push(["費用", c.id, c.label, c.icon, ""]));
@@ -1164,7 +1148,6 @@ const TripPlanner = ({
     if (e.target.closest('.draggable-item')) e.target.closest('.draggable-item').style.opacity = '1';
     if (dragItem.current === null || dragOverItem.current === null) return;
     
-    // Handle Category Reordering
     if (viewMode === 'categoryManager') {
       const list = categoryManagerTab === 'itinerary' ? [...itineraryCategories] : [...expenseCategories];
       const dragContent = list[dragItem.current];
@@ -1173,7 +1156,6 @@ const TripPlanner = ({
       if (categoryManagerTab === 'itinerary') setItineraryCategories(list);
       else setExpenseCategories(list);
     } 
-    // Handle Standard Item Reordering
     else {
       const list = [...getCurrentList()];
       const dragContent = list[dragItem.current];
@@ -1202,13 +1184,21 @@ const TripPlanner = ({
       }
       setFormData({ ...baseData, type: itineraryCategories[0]?.id || 'sightseeing', time: defaultTime, duration: 60 });
     } else if (viewMode === 'expenses') {
+      // Default to one detail row
+      const initialDetail = {
+          id: Date.now(),
+          payer: 'Me',
+          target: 'Me', // Default target
+          amount: 0
+      };
+      
       setFormData({
         ...baseData,
         date: tripSettings.startDate,
         category: expenseCategories[0]?.id || 'food',
         payer: 'Me', 
         shares: companions, 
-        details: [] 
+        details: [initialDetail] // Start with one row
       });
     } else {
       setFormData(baseData);
@@ -1298,6 +1288,7 @@ const TripPlanner = ({
          const targets = new Set();
          newItem.details.forEach(d => {
              if (d.target === 'ALL') companions.forEach(c => targets.add(c));
+             else if (d.payer === 'EACH' || d.target === 'EACH') companions.forEach(c => targets.add(c));
              else targets.add(d.target);
          });
          newItem.shares = Array.from(targets);
@@ -1332,7 +1323,7 @@ const TripPlanner = ({
 
   const addSplitDetail = () => {
     const currentAllocated = (formData.details || []).reduce((sum, d) => {
-        if (d.target === 'ALL') return sum + (d.amount * companions.length);
+        if (d.target === 'ALL' || d.payer === 'EACH' || d.target === 'EACH') return sum + (d.amount * companions.length);
         return sum + d.amount;
     }, 0);
     const totalCost = parseFloat(formData.cost) || 0;
@@ -1345,7 +1336,24 @@ const TripPlanner = ({
       const updatedDetails = formData.details.map(d => {
           if (d.id !== detailId) return d;
           let updates = { [field]: value };
-          if (field === 'target' && value === 'ALL' && formData.cost) updates.amount = Math.round(formData.cost / companions.length);
+          
+          // Logic for EACH/ALL calculation
+          if ((value === 'ALL' || value === 'EACH') && formData.cost) {
+              if (field === 'target' || (field === 'payer' && value === 'EACH')) {
+                   updates.amount = Math.round(formData.cost / companions.length);
+              }
+          }
+          
+          // If payer is set to EACH, lock target to EACH
+          if (field === 'payer' && value === 'EACH') {
+              updates.target = 'EACH'; 
+          }
+          
+          // If target is set to EACH, sync Payer to EACH
+          if (field === 'target' && value === 'EACH') {
+              updates.payer = 'EACH';
+          }
+
           return { ...d, ...updates };
       });
       setFormData({ ...formData, details: updatedDetails });
@@ -1401,10 +1409,8 @@ const TripPlanner = ({
 
   const statisticsData = useMemo(() => {
     const personStats = {};
-    // Ensure all current companions are in stats
     companions.forEach(c => { personStats[c] = { paid: 0, share: 0, balance: 0 }; });
 
-    // Helper to safely get stat object, creating if missing (for removed companions still in expenses)
     const getSafeStat = (name) => {
         if (!personStats[name]) personStats[name] = { paid: 0, share: 0, balance: 0 };
         return personStats[name];
@@ -1414,7 +1420,7 @@ const TripPlanner = ({
     let personalExpensesList = [];
 
     expenses.forEach(exp => {
-      const amount = exp.cost || 0; // Guard against NaN
+      const amount = exp.cost || 0; 
       const category = exp.category || 'other';
 
       if (!categoryStats.real[category]) categoryStats.real[category] = 0;
@@ -1426,14 +1432,26 @@ const TripPlanner = ({
               const payer = d.payer || 'Unknown';
               const target = d.target || 'Unknown';
 
-              if (target === 'ALL') {
-                  const totalForThisDetail = dAmount * companions.length;
-                  getSafeStat(payer).paid += totalForThisDetail;
+              if (target === 'ALL' || target === 'EACH' || payer === 'EACH') {
                   
-                  companions.forEach(c => {
-                      getSafeStat(c).share += dAmount;
-                      personalExpensesList.push({ ...exp, id: `${exp.id}_${idx}_${c}`, cost: dAmount, payer: c, realPayer: payer, isVirtual: true, noteSuffix: `(均攤)` });
-                  });
+                  // Case: "Each Pays" (Go Dutch) or "One pays All"
+                  const totalForThisDetail = dAmount * companions.length;
+                  
+                  if (payer === 'EACH') {
+                      // Each person paid dAmount and consumed dAmount. Balance net 0.
+                       companions.forEach(c => {
+                          getSafeStat(c).paid += dAmount;
+                          getSafeStat(c).share += dAmount;
+                          personalExpensesList.push({ ...exp, id: `${exp.id}_${idx}_${c}`, cost: dAmount, payer: c, realPayer: c, isVirtual: true, noteSuffix: `(各付)` });
+                      });
+                  } else {
+                      // One payer paid for ALL/EACH
+                      getSafeStat(payer).paid += totalForThisDetail;
+                      companions.forEach(c => {
+                          getSafeStat(c).share += dAmount;
+                          personalExpensesList.push({ ...exp, id: `${exp.id}_${idx}_${c}`, cost: dAmount, payer: c, realPayer: payer, isVirtual: true, noteSuffix: `(均攤)` });
+                      });
+                  }
                   
                   if (!categoryStats.personal[category]) categoryStats.personal[category] = 0;
                   categoryStats.personal[category] += totalForThisDetail;
@@ -1448,10 +1466,20 @@ const TripPlanner = ({
               }
           });
       } else {
+          // Fallback for simple expense without details
           const payer = exp.payer || 'Unknown';
-          getSafeStat(payer).paid += amount;
-          
-          personalExpensesList.push({ ...exp, realPayer: payer, payer: payer }); 
+          if (payer === 'EACH') {
+             // Treat as if split evenly and everyone paid themselves
+             const perPerson = amount / companions.length;
+             companions.forEach(c => {
+                getSafeStat(c).paid += perPerson;
+                getSafeStat(c).share += perPerson;
+                personalExpensesList.push({ ...exp, id: `${exp.id}_${c}`, cost: perPerson, payer: c, realPayer: c, isVirtual: true });
+             });
+          } else {
+             getSafeStat(payer).paid += amount;
+             personalExpensesList.push({ ...exp, realPayer: payer, payer: payer }); 
+          }
           
           if (!categoryStats.personal[category]) categoryStats.personal[category] = 0;
           categoryStats.personal[category] += amount;
@@ -1499,9 +1527,8 @@ const TripPlanner = ({
   );
 
   const PayerAvatar = ({ name, size = "w-4 h-4" }) => {
-    // Determine index dynamically to handle unknown/removed users gracefully
     let idx = companions.indexOf(name);
-    if (idx === -1) idx = 99; // Fallback index for color
+    if (idx === -1) idx = 99; 
     
     return (
       <div className={`${size} rounded-full ${getAvatarColor(idx)} flex items-center justify-center ${theme.primary} text-[8px] font-bold font-serif shrink-0 border border-white`}>
@@ -1541,6 +1568,10 @@ const TripPlanner = ({
           );
        }
        const ItemIcon = getIconComponent(categoryDef.icon);
+       
+       // Handle display for "EACH" payer in real stats mode
+       const isEachPayer = exp.payer === 'EACH' || (exp.details && exp.details[0] && exp.details[0].payer === 'EACH');
+
        return (
          <React.Fragment key={exp.id}>
            {categoryHeader}
@@ -1557,12 +1588,22 @@ const TripPlanner = ({
                         <span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} /><span>{exp.payer}</span></span>
                         <span className={`text-[#E6E2D3] mx-1`}>|</span>
                         <span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.realPayer} /><span>{exp.realPayer}</span></span>
+                        {exp.noteSuffix && <span className="text-[#A98467] ml-1">{exp.noteSuffix}</span>}
                       </>
                     ) : (
                       <>
-                        <span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.payer} /><span>{exp.payer}</span></span>
+                        <span className="flex items-center gap-1">
+                            <span>代墊:</span>
+                            {isEachPayer ? (
+                                <div className="flex -space-x-1">
+                                    {companions.map(c => <PayerAvatar key={c} name={c} />)}
+                                </div>
+                            ) : (
+                                <><PayerAvatar name={exp.payer} /><span>{exp.payer}</span></>
+                            )}
+                        </span>
                         <span className={`text-[#E6E2D3] mx-1`}>|</span>
-                        <span className="flex items-center gap-1"><span>分攤:</span>{exp.details && exp.details.some(d => d.target === 'ALL') ? <span className={`${theme.hover} px-1 rounded ${theme.primary}`}>全員</span> : <span>{exp.shares ? exp.shares.length : 0}人</span>}</span>
+                        <span className="flex items-center gap-1"><span>分攤:</span>{(exp.details && exp.details.some(d => d.target === 'ALL' || d.target === 'EACH' || d.payer === 'EACH')) ? <span className={`${theme.hover} px-1 rounded ${theme.primary}`}>全員</span> : <span>{exp.shares ? exp.shares.length : 0}人</span>}</span>
                       </>
                     )}
                   </div>
@@ -1727,7 +1768,7 @@ const TripPlanner = ({
           </div>
         ) : viewMode === 'statistics' ? (
           <div className="space-y-6 animate-in fade-in duration-500">
-            {/* ... Statistics Content (same as original, but using category stats) ... */}
+            {/* ... Statistics Content ... */}
             <div className="overflow-x-auto pb-2 scrollbar-hide -mx-2 px-2">
               <div className="flex gap-3 min-w-max">
                 <div onClick={() => setStatsPersonFilter('all')} className={`border rounded-xl p-3 shadow-sm min-w-[4rem] flex flex-col items-center justify-center cursor-pointer transition-all ${statsPersonFilter === 'all' ? 'bg-[#3A3A3A] border-[#3A3A3A] text-white' : `${theme.card} ${theme.border} text-[#3A3A3A] ${theme.hover}`}`}>
@@ -1776,7 +1817,7 @@ const TripPlanner = ({
             {viewMode === 'itinerary' && <div className={`absolute left-[4.5rem] top-4 bottom-4 w-px ${theme.border} -z-10`}></div>}
             {getCurrentList().map((item, index) => {
               if (viewMode === 'expenses') {
-                // ... Expense Item Rendering (Using Dynamic Categories) ...
+                // ... Expense Item Rendering ...
                 const categoryDef = expenseCategories.find(c => c.id === item.category) || { label: '未分類', icon: 'Coins' };
                 const Icon = getIconComponent(categoryDef.icon);
                 const twd = Math.round(item.cost * currencySettings.exchangeRate);
@@ -1785,7 +1826,9 @@ const TripPlanner = ({
                 if (index === 0 || (item.region || '未分類') !== (prevItem?.region || '未分類')) {
                    groupHeader = (<div className={`sticky top-0 z-10 ${theme.bg}/95 backdrop-blur-sm py-3 px-1 mb-2 border-b ${theme.border} text-lg font-bold ${theme.primary} flex items-center gap-2 animate-in fade-in mt-6 first:mt-0`}><MapIcon size={18} /> {item.region || '未分類'}</div>);
                 }
-                const payerDisplay = item.details && item.details.length > 0 ? [...new Set(item.details.map(d => d.payer))].join(' | ') : item.payer;
+                const isEachPayer = item.payer === 'EACH' || (item.details && item.details[0] && item.details[0].payer === 'EACH');
+                const payerDisplay = isEachPayer ? '各付' : (item.details && item.details.length > 0 ? [...new Set(item.details.map(d => d.payer))].join(' | ') : item.payer);
+
                 return (
                   <React.Fragment key={item.id}>
                     {groupHeader}
@@ -1802,9 +1845,20 @@ const TripPlanner = ({
                            <Calendar size={12} className={theme.accent}/>
                            <span>{item.date}</span>
                            <span>•</span>
-                           <span className={`${theme.accent} font-bold`}>{payerDisplay} ● 支付</span>
+                           <span className={`${theme.accent} font-bold flex items-center gap-1`}>
+                               {isEachPayer ? (
+                                   <>
+                                     <div className="flex -space-x-1">
+                                        {companions.map(c => <PayerAvatar key={c} name={c} size="w-3 h-3" />)}
+                                     </div>
+                                     <span className="ml-1">各付</span>
+                                   </>
+                               ) : (
+                                   <>{payerDisplay} ● 支付</>
+                               )}
+                           </span>
                         </div>
-                        <div className="flex justify-between items-end"><div className={`text-[10px] text-[#666] ${theme.bg} px-2 py-1.5 rounded flex flex-wrap items-center gap-x-2 gap-y-1`}><span className="font-bold">分攤:</span>{item.shares && item.shares.map((share, idx) => (<React.Fragment key={share}><div className="flex items-center gap-1"><PayerAvatar name={share} size="w-3 h-3" /><span>{share}</span></div>{idx < item.shares.length - 1 && <span className="text-[#CCC]">|</span>}</React.Fragment>))}</div><div className="text-right shrink-0 ml-2"><div className={`text-sm font-serif font-bold ${theme.accent}`}>{item.currency} {formatMoney(item.cost)}</div><div className="text-[10px] text-[#999] font-medium">(NT$ {formatMoney(twd)})</div></div></div>
+                        <div className="flex justify-between items-end"><div className={`text-[10px] text-[#666] ${theme.bg} px-2 py-1.5 rounded flex flex-wrap items-center gap-x-2 gap-y-1`}><span className="font-bold">分攤:</span>{(item.shares && (item.shares.includes('ALL') || isEachPayer)) ? <span className={`${theme.primary} font-bold`}>全員</span> : item.shares && item.shares.map((share, idx) => (<React.Fragment key={share}><div className="flex items-center gap-1"><PayerAvatar name={share} size="w-3 h-3" /><span>{share}</span></div>{idx < item.shares.length - 1 && <span className="text-[#CCC]">|</span>}</React.Fragment>))}</div><div className="text-right shrink-0 ml-2"><div className={`text-sm font-serif font-bold ${theme.accent}`}>{item.currency} {formatMoney(item.cost)}</div><div className="text-[10px] text-[#999] font-medium">(NT$ {formatMoney(twd)})</div></div></div>
                       </div>
                     </div>
                   </React.Fragment>
@@ -2016,7 +2070,7 @@ const TripPlanner = ({
                         <div className="w-1/3"><input type="text" placeholder="地區" required value={formData.region} onChange={e => setFormData({...formData, region: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-base font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div>
                         <div className="flex-1"><input type="text" placeholder="項目名稱" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-base font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div>
                       </div>
-                      {/* ... (Cost input and Split logic same as original) ... */}
+                      {/* Cost */}
                       <div>
                         <label className="block text-xs font-bold text-[#888] mb-1">預算 / 費用 (總額)</label>
                         <div className="flex gap-2">
@@ -2032,9 +2086,30 @@ const TripPlanner = ({
                         <div className="space-y-2 mb-3">
                             {formData.details && formData.details.map((detail, idx) => (
                                 <div key={detail.id} className={`flex flex-wrap items-center gap-2 bg-white p-2 rounded border ${theme.border} shadow-sm text-xs`}>
-                                    <div className="relative min-w-[4.5rem]"><select value={detail.payer} onChange={(e) => updateSplitDetail(detail.id, 'payer', e.target.value)} className="w-full pl-6 pr-4 py-1 appearance-none bg-transparent font-bold text-[#3A3A3A] focus:outline-none cursor-pointer text-base">{companions.map(c => <option key={c} value={c}>{c}</option>)}</select><div className={`absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full ${theme.border} flex items-center justify-center text-[8px] font-serif pointer-events-none`}>{detail.payer.charAt(0).toUpperCase()}</div></div>
+                                    <div className="relative min-w-[4.5rem]">
+                                        <select value={detail.payer} onChange={(e) => updateSplitDetail(detail.id, 'payer', e.target.value)} className="w-full pl-6 pr-4 py-1 appearance-none bg-transparent font-bold text-[#3A3A3A] focus:outline-none cursor-pointer text-base">
+                                            {companions.map(c => <option key={c} value={c}>{c}</option>)}
+                                            <option value="EACH">各付</option>
+                                        </select>
+                                        <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full ${theme.border} flex items-center justify-center text-[8px] font-serif pointer-events-none`}>
+                                            {detail.payer === 'EACH' ? <Users size={10} /> : detail.payer.charAt(0).toUpperCase()}
+                                        </div>
+                                    </div>
                                     <ArrowRight size={10} className="text-[#CCC]" />
-                                    <div className="relative min-w-[5rem]"><select value={detail.target} onChange={(e) => updateSplitDetail(detail.id, 'target', e.target.value)} className={`w-full pl-6 pr-4 py-1 appearance-none bg-transparent font-bold ${theme.primary} focus:outline-none cursor-pointer text-base`}>{companions.map(c => <option key={c} value={c}>{c}</option>)}<option value="ALL">均攤</option></select><div className={`absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full ${theme.border} flex items-center justify-center text-[8px] font-serif pointer-events-none`}>{detail.target === 'ALL' ? <Users size={10} /> : detail.target.charAt(0).toUpperCase()}</div></div>
+                                    <div className="relative min-w-[5rem]">
+                                        {detail.payer === 'EACH' ? (
+                                            <div className="w-full pl-6 py-1 font-bold text-[#888] text-base">各付</div>
+                                        ) : (
+                                            <select value={detail.target} onChange={(e) => updateSplitDetail(detail.id, 'target', e.target.value)} className={`w-full pl-6 pr-4 py-1 appearance-none bg-transparent font-bold ${theme.primary} focus:outline-none cursor-pointer text-base`}>
+                                                {companions.map(c => <option key={c} value={c}>{c}</option>)}
+                                                <option value="ALL">均攤</option>
+                                                <option value="EACH">各付</option>
+                                            </select>
+                                        )}
+                                        <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full ${theme.border} flex items-center justify-center text-[8px] font-serif pointer-events-none`}>
+                                            {detail.payer === 'EACH' ? <Users size={10} /> : (detail.target === 'ALL' || detail.target === 'EACH' ? <Users size={10} /> : detail.target.charAt(0).toUpperCase())}
+                                        </div>
+                                    </div>
                                     <div className="flex-1 flex items-center justify-end gap-1"><span className="text-[10px] text-[#888]">{currencySettings.selectedCountry.currency}</span><input type="number" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" value={detail.amount === 0 ? '' : detail.amount} onChange={(e) => updateSplitDetail(detail.id, 'amount', parseInt(e.target.value) || 0)} className={`w-16 text-right border-b ${theme.border} focus:${theme.primaryBorder} focus:outline-none bg-transparent font-bold text-base`}/></div>
                                     {formData.details.length > 1 && (<button type="button" onClick={() => removeSplitDetail(detail.id)} className={`text-[#C55A5A] hover:${theme.dangerBg} p-1 rounded`}><X size={12} /></button>)}
                                 </div>
@@ -2155,13 +2230,11 @@ const TripPlanner = ({
 const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, onOpenProject, googleUser, handleGoogleLogin, handleGoogleLogout }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [clickingId, setClickingId] = useState(null);
-  
-  // Requirement 1: Force Home Page to use 'Mori' theme always
+   
   const theme = THEMES.mori;
 
   const handleProjectClick = (project) => {
     setClickingId(project.id);
-    // Short timeout to show the "saturated" state before switching
     setTimeout(() => {
       onOpenProject(project);
       setClickingId(null);
@@ -2192,7 +2265,6 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
           <p className="text-[#888888] text-sm md:text-base tracking-[0.4em] font-light uppercase mb-8">SELECT YOUR JOURNEY</p>
           <div className="w-full max-w-sm flex flex-col gap-4 my-4">
             {projects.map((project) => {
-              // Retrieve project-specific theme
               const pData = allProjectsData[project.id] || {};
               const settings = pData.tripSettings || {};
               const projectThemeId = pData.themeId || 'mori';
@@ -2210,7 +2282,6 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
                     ${isClicking ? `${pTheme.primaryBg} border-transparent scale-[0.98]` : `bg-[#FFFFFF] ${theme.border} hover:bg-[#F2F0EB]`}
                   `}
                 >
-                  {/* Hover indicator strip using Project's color */}
                   <div className={`absolute left-0 top-0 bottom-0 w-1 ${pTheme.primaryBg.replace('bg-', 'bg-opacity-80 bg-')} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}></div>
                   
                   <div className="flex flex-col items-start gap-1 pl-2">
@@ -2226,7 +2297,6 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
                   
                   <div className="flex items-center gap-2">
                     <ChevronRight size={16} className={`transition-all duration-300 ${isClicking ? 'text-white' : 'text-[#E6E2D3] group-hover:opacity-0 absolute right-8'}`} />
-                    {/* Delete button only shows on hover, hides on click to avoid confusion */}
                     {!isClicking && (
                       <button 
                         onClick={(e) => onDeleteProject(e, project.id)} 
@@ -2258,7 +2328,6 @@ export default function App() {
   const [activeProject, setActiveProject] = useState(null);
   const [currentThemeId, setCurrentThemeId] = useState('mori');
   
-  // --- LocalStorage Logic ---
   const [projects, setProjects] = useState(() => {
     const savedProjects = localStorage.getItem('tripPlanner_projects');
     return savedProjects ? JSON.parse(savedProjects) : [{ id: 1, name: '東京 5 日遊', lastModified: new Date().toISOString() }];
@@ -2284,7 +2353,6 @@ export default function App() {
   const [googleUser, setGoogleUser] = useState(null);
 
   useEffect(() => {
-    // Check for stored token on load
     const storedToken = localStorage.getItem('google_access_token');
     if (storedToken) {
         setGoogleUser({ accessToken: storedToken });
@@ -2296,7 +2364,6 @@ export default function App() {
         script.onload = () => {
             window.gapi.load('client', () => {
                 window.gapi.client.init({}).then(() => {
-                   // Load Sheets AND Drive API
                    Promise.all([
                        window.gapi.client.load('https://sheets.googleapis.com/$discovery/rest?version=v4'),
                        window.gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest')
@@ -2320,7 +2387,6 @@ export default function App() {
     loadGis();
   }, []);
 
-  // --- Ensure gapi.client uses the stored token ---
   useEffect(() => {
       if (gapiInited && googleUser?.accessToken) {
           window.gapi.client.setToken({ access_token: googleUser.accessToken });
@@ -2336,7 +2402,6 @@ export default function App() {
                 callback: (tokenResponse) => {
                     if (tokenResponse && tokenResponse.access_token) {
                         setGoogleUser({ accessToken: tokenResponse.access_token });
-                        // Persist token
                         localStorage.setItem('google_access_token', tokenResponse.access_token);
                     }
                 },
@@ -2350,7 +2415,6 @@ export default function App() {
 
   const handleGoogleLogin = () => {
       if (tokenClient) {
-          // Trigger silent prompt or popup if needed (Implicit grant)
           tokenClient.requestAccessToken();
       } else {
           alert("Google 服務尚未載入完成，請稍候再試。");
@@ -2398,21 +2462,17 @@ export default function App() {
     
     if (!window.confirm("確定要刪除此行程嗎？\n(若已登入 Google，雲端備份檔也會一併刪除)")) return;
 
-    // Cloud Deletion Logic
     if (googleUser && gapiInited) {
-        // Try to find file ID from allProjectsData directly
         const projectToDeleteData = allProjectsData[id];
         
         if (projectToDeleteData && projectToDeleteData.googleDriveFileId) {
-             // If we have a stored ID, delete directly
              try {
                  await window.gapi.client.drive.files.delete({ fileId: projectToDeleteData.googleDriveFileId });
                  console.log(`Cloud file deleted via ID: ${projectToDeleteData.googleDriveFileId}`);
              } catch (err) {
-                 console.warn("Failed to delete cloud file via ID (might be already deleted or no permission):", err);
+                 console.warn("Failed to delete cloud file via ID:", err);
              }
         } else {
-             // Fallback: Search by name if no ID (for legacy projects)
              const projectToDelete = projects.find(p => p.id === id);
              if (projectToDelete) {
                 const title = `TravelApp_${projectToDelete.name}`;
@@ -2497,5 +2557,3 @@ export default function App() {
     />
   );
 }
-
-
