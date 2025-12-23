@@ -9,7 +9,7 @@ import {
   Ticket, Bus, Car, Ship, Music, Gamepad2, Gift, Shirt, Briefcase, 
   Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
   Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2, RefreshCw, Printer,
-  Calendar, Tag
+  Calendar, Tag, Filter, XCircle, BarChart3
 } from 'lucide-react';
 
 // --- Icon Registry for Dynamic Usage ---
@@ -210,6 +210,12 @@ const calculateDaysDiff = (startStr, endStr) => {
   return diffDays >= 1 ? diffDays + 1 : 1; 
 };
 
+// Display format using Dots (YYYY.MM.DD)
+const formatDateDot = (dateStr) => {
+  if (!dateStr) return '';
+  return dateStr.replace(/-/g, '.');
+};
+
 const formatDateSlash = (dateStr) => {
   if (!dateStr) return '';
   return dateStr.replace(/-/g, '/');
@@ -222,7 +228,7 @@ const formatDate = (dateString, addDays) => {
   const month = date.getMonth() + 1;
   const day = date.getDate();
   const weekDay = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'][date.getDay()];
-  return { text: `${month}/${day}`, day: weekDay, full: date.toISOString().split('T')[0] };
+  return { text: `${month}.${day}`, day: weekDay, full: date.toISOString().split('T')[0] };
 };
 
 const sortItemsByTime = (items) => [...items].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
@@ -277,7 +283,7 @@ const formatLastModified = (isoString) => {
   const HH = String(utc8Date.getUTCHours()).padStart(2, '0');
   const MM = String(utc8Date.getUTCMinutes()).padStart(2, '0');
    
-  return `${yyyy}/${mm}/${dd} ${HH}:${MM}`;
+  return `${yyyy}.${mm}.${dd} ${HH}:${MM}`;
 };
 
 const getDefaultItinerary = () => ({
@@ -592,7 +598,7 @@ const TripPlanner = ({
   const handleExportToPDF = () => {
     try {
       const title = tripSettings.title || "My Trip";
-      const dateRange = `${formatDateSlash(tripSettings.startDate)} ~ ${formatDateSlash(tripSettings.endDate)}`;
+      const dateRange = `${formatDateDot(tripSettings.startDate)} ~ ${formatDateDot(tripSettings.endDate)}`;
       
       let content = `
         <html>
@@ -658,7 +664,7 @@ const TripPlanner = ({
         sortedExp.forEach(item => {
           const cat = expenseCategories.find(c => c.id === item.category) || { label: item.category || '未分類' };
           content += `<tr>
-            <td>${formatDateSlash(item.date)}</td>
+            <td>${formatDateDot(item.date)}</td>
             <td><span class="tag">${cat.label}</span></td>
             <td>${item.title}</td>
             <td>${item.payer === 'EACH' ? '各付' : item.payer}</td>
@@ -729,6 +735,7 @@ const TripPlanner = ({
   const [statsMode, setStatsMode] = useState('real');
   const [statsCategoryFilter, setStatsCategoryFilter] = useState('all');
   const [statsPersonFilter, setStatsPersonFilter] = useState('all');
+  const [statsDateFilter, setStatsDateFilter] = useState(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -1369,13 +1376,28 @@ const TripPlanner = ({
   // Daily Expenses Calculation
   const dailyStats = useMemo(() => {
       const stats = {};
+      let maxAmount = 0;
       expenses.forEach(e => {
           const d = e.date; 
           if(!stats[d]) stats[d] = 0;
           stats[d] += e.cost;
+          if(stats[d] > maxAmount) maxAmount = stats[d];
       });
-      return Object.entries(stats).sort((a,b) => a[0].localeCompare(b[0]));
+      const sortedStats = Object.entries(stats).sort((a,b) => a[0].localeCompare(b[0]));
+      return { data: sortedStats, max: maxAmount };
   }, [expenses]);
+
+  // Category Chart Data Calculation
+  const categoryChartData = useMemo(() => {
+      const stats = statisticsData.categoryStats[statsMode];
+      const data = Object.entries(stats).map(([catId, amount]) => ({
+          catId, 
+          amount,
+          cat: expenseCategories.find(c => c.id === catId) || { label: '其他', color: 'bg-gray-200' }
+      })).sort((a,b) => b.amount - a.amount);
+      const max = Math.max(...data.map(d => d.amount), 0);
+      return { data, max };
+  }, [statisticsData, statsMode, expenseCategories]);
 
   // Helper for Dropdown Display Button
   const SplitDropdownButton = ({ label, type, theme }) => {
@@ -1445,7 +1467,11 @@ const TripPlanner = ({
     const sourceList = statsMode === 'real' ? expenses : statisticsData.personalExpensesList;
     let filteredExpenses = sourceList.filter(e => statsCategoryFilter === 'all' || e.category === statsCategoryFilter);
     if (statsPersonFilter !== 'all') filteredExpenses = filteredExpenses.filter(e => e.payer === statsPersonFilter);
+    if (statsDateFilter) filteredExpenses = filteredExpenses.filter(e => e.date === statsDateFilter); // Date Filter
+    
     const sortedExpenses = sortExpensesByRegionAndCategory(filteredExpenses);
+
+    if (sortedExpenses.length === 0) return <div className="text-center text-[#888] text-xs py-8">無符合條件的消費紀錄</div>;
 
     return sortedExpenses.map((exp, index) => {
        const prevExp = sortedExpenses[index - 1];
@@ -1472,12 +1498,13 @@ const TripPlanner = ({
        return (
          <React.Fragment key={exp.id}>
            {categoryHeader}
-           <div className={`${theme.card} p-3 rounded-xl border ${theme.border} flex justify-between items-center shadow-sm`}>
+           <div className={`${theme.card} p-3 rounded-xl border ${theme.border} flex justify-between items-center shadow-sm animate-in slide-in-from-bottom-2 duration-300`}>
              <div className="flex items-center gap-3">
                 <div className={`w-8 h-8 rounded-full ${theme.hover} flex items-center justify-center ${theme.primary} shrink-0`}><ItemIcon size={16} /></div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-bold text-[#3A3A3A] font-serif truncate">{exp.title}</div>
                   <div className="text-[10px] text-[#888] mt-1 flex flex-wrap gap-1 items-center">
+                    <span className="flex items-center gap-1 text-[9px] bg-gray-100 px-1 rounded">{formatDateDot(exp.date)}</span>
                     {statsMode === 'personal' ? (
                       <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} /><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.realPayer} /><span>{exp.realPayer}</span></span>{exp.noteSuffix && <span className="text-[#A98467] ml-1">{exp.noteSuffix}</span>}</>
                     ) : (
@@ -1510,7 +1537,7 @@ const TripPlanner = ({
                {onBack && (<button onClick={onBack} className={`text-[#888] hover:${theme.primary} transition-colors p-2 -ml-3 rounded-full ${theme.hover} shrink-0`} title="回首頁"><Home size={28} strokeWidth={2.5} /></button>)}
                <div className="min-w-0 flex-1">
                   <h1 className="text-xl md:text-2xl font-serif font-bold tracking-wide text-[#3A3A3A] flex items-center gap-2 truncate pr-2"><span className="truncate">{tripSettings.title}</span></h1>
-                  <div className={`text-xs font-serif ${theme.subText} mt-1 tracking-widest uppercase pl-1 flex items-center gap-2 truncate`}><span>{formatDateSlash(tripSettings.startDate)}</span><ArrowRight size={12} className="shrink-0" /><span>{formatDateSlash(tripSettings.endDate)}</span><span className={`border-l ${theme.border} pl-2 ml-1 shrink-0`}>{tripSettings.days} 天</span></div>
+                  <div className={`text-xs font-serif ${theme.subText} mt-1 tracking-widest uppercase pl-1 flex items-center gap-2 truncate`}><span>{formatDateDot(tripSettings.startDate)}</span><ArrowRight size={12} className="shrink-0" /><span>{formatDateDot(tripSettings.endDate)}</span><span className={`border-l ${theme.border} pl-2 ml-1 shrink-0`}>{tripSettings.days} 天</span></div>
                </div>
             </div>
             <div className="flex gap-2 shrink-0 relative items-center">
@@ -1553,26 +1580,84 @@ const TripPlanner = ({
           </div>
         ) : viewMode === 'statistics' ? (
           <div className="space-y-6 animate-in fade-in duration-500">
+            {/* Person Filter */}
             <div className="overflow-x-auto pb-2 scrollbar-hide -mx-2 px-2"><div className="flex gap-3 min-w-max"><div onClick={() => setStatsPersonFilter('all')} className={`border rounded-xl p-3 shadow-sm min-w-[4rem] flex flex-col items-center justify-center cursor-pointer transition-all ${statsPersonFilter === 'all' ? 'bg-[#3A3A3A] border-[#3A3A3A] text-white' : `${theme.card} ${theme.border} text-[#3A3A3A] ${theme.hover}`}`}><div className="text-xs font-bold mb-1">ALL</div><Users size={16} /></div>{companions.map((person, idx) => { const stat = statisticsData.personStats[person]; const amount = statsMode === 'real' ? stat.paid : stat.share; return (<div key={person} onClick={() => setStatsPersonFilter(statsPersonFilter === person ? 'all' : person)} className={`border rounded-xl p-3 shadow-sm min-w-[8rem] flex flex-col items-center cursor-pointer transition-all ${statsPersonFilter === person ? `${theme.hover} ${theme.primaryBorder} ring-1 ring-[#5F6F52]` : `${theme.card} ${theme.border} ${theme.hover}`}`}><div className={`w-10 h-10 rounded-full ${getAvatarColor(idx)} flex items-center justify-center ${theme.primary} text-sm font-bold font-serif mb-2`}>{person.charAt(0)}</div><div className="text-xs font-bold text-[#3A3A3A] mb-1">{person}</div><div className={`text-sm font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.symbol} {formatMoney(amount)}</div></div>)})}</div></div>
+            
+            {/* Settlement */}
             <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}><h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2"><ArrowLeftRight size={16}/> 結算建議</h3><div className="space-y-3">{statisticsData.transactions.length > 0 ? (statisticsData.transactions.map((tx, i) => (<div key={i} className={`flex items-center justify-between text-sm border-b ${theme.border} pb-3 last:border-0`}><div className="flex items-center gap-2 flex-1"><span className="font-bold text-[#3A3A3A]">{tx.from}</span><ArrowRight size={14} className="text-[#CCC]" /><span className="font-bold text-[#3A3A3A]">{tx.to}</span></div><div className={`font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(tx.amount)}</div></div>))) : ( <div className="text-center text-[#888] text-xs py-2">已結清</div> )}</div></div>
             
-            {/* Daily Expenses Section */}
+            {/* Daily Expenses Bar Chart */}
             <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
-                <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2"><Calendar size={16}/> 每日消費統計</h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-sm font-bold text-[#888] flex items-center gap-2"><BarChart3 size={16}/> 每日消費統計</h3>
+                    {statsDateFilter && <button onClick={() => setStatsDateFilter(null)} className={`text-[10px] px-2 py-1 rounded bg-gray-100 flex items-center gap-1 hover:bg-gray-200 text-[#666]`}><XCircle size={10} /> 清除篩選</button>}
+                </div>
                 <div className="space-y-3">
-                    {dailyStats.length > 0 ? (dailyStats.map(([date, amount]) => (
-                        <div key={date} className={`flex items-center justify-between text-sm border-b ${theme.border} pb-3 last:border-0`}>
-                            <span className="font-bold text-[#3A3A3A]">{formatDateSlash(date)}</span>
-                            <div className="text-right">
-                                <div className={`font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(amount)}</div>
-                                <div className="text-[10px] text-[#999]">(NT$ {formatMoney(amount * currencySettings.exchangeRate)})</div>
+                    {dailyStats.data.length > 0 ? (dailyStats.data.map(([date, amount]) => {
+                        const isSelected = statsDateFilter === date;
+                        const percentage = (amount / dailyStats.max) * 100;
+                        return (
+                            <div key={date} onClick={() => setStatsDateFilter(isSelected ? null : date)} className={`cursor-pointer group relative pt-1 pb-2 ${isSelected ? '' : 'hover:opacity-80 transition-opacity'}`}>
+                                <div className="flex justify-between text-xs mb-1 relative z-10">
+                                    <span className={`font-bold ${isSelected ? theme.primary : 'text-[#3A3A3A]'}`}>{formatDateDot(date)}</span>
+                                    <span className={`font-serif font-bold ${isSelected ? theme.accent : 'text-[#3A3A3A]'}`}>{currencySettings.selectedCountry.symbol} {formatMoney(amount)}</span>
+                                </div>
+                                <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden relative">
+                                    <div className={`h-full rounded-full transition-all duration-700 ease-out ${isSelected ? theme.primaryBg : 'bg-[#A9A9A9]'}`} style={{ width: `${percentage}%` }}></div>
+                                </div>
+                                {isSelected && <div className={`absolute -left-2 -right-2 -top-1 -bottom-1 ${theme.hover} rounded-lg -z-0 opacity-50`}></div>}
                             </div>
-                        </div>
-                    ))) : (<div className="text-center text-[#888] text-xs py-2">無消費紀錄</div>)}
+                        );
+                    })) : (<div className="text-center text-[#888] text-xs py-2">無消費紀錄</div>)}
                 </div>
             </div>
 
-            <div className="space-y-3"><h3 className="text-sm font-bold text-[#888] pl-1">詳細清單</h3>{renderDetailedList()}</div>
+            {/* Category Expenses Bar Chart */}
+            <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-sm font-bold text-[#888] flex items-center gap-2"><PieChart size={16}/> 分類消費統計</h3>
+                    {statsCategoryFilter !== 'all' && <button onClick={() => setStatsCategoryFilter('all')} className={`text-[10px] px-2 py-1 rounded bg-gray-100 flex items-center gap-1 hover:bg-gray-200 text-[#666]`}><XCircle size={10} /> 清除篩選</button>}
+                </div>
+                <div className="space-y-3">
+                    {categoryChartData.data.length > 0 ? (categoryChartData.data.map(({ catId, amount, cat }) => {
+                        const isSelected = statsCategoryFilter === catId;
+                        const percentage = (amount / categoryChartData.max) * 100;
+                        const Icon = getIconComponent(cat.icon);
+                        return (
+                            <div key={catId} onClick={() => setStatsCategoryFilter(isSelected ? 'all' : catId)} className={`cursor-pointer group relative py-1 ${isSelected ? '' : 'hover:opacity-80 transition-opacity'}`}>
+                                <div className="flex items-center gap-3 relative z-10">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${isSelected ? theme.primaryBorder : 'border-transparent'} ${theme.hover}`}>
+                                        <Icon size={14} className={isSelected ? theme.primary : 'text-[#666]'} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="flex justify-between text-xs mb-1">
+                                            <span className={`font-bold ${isSelected ? theme.primary : 'text-[#3A3A3A]'}`}>{cat.label}</span>
+                                            <span className={`font-serif font-bold ${isSelected ? theme.accent : 'text-[#3A3A3A]'}`}>{currencySettings.selectedCountry.symbol} {formatMoney(amount)}</span>
+                                        </div>
+                                        <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                                            <div className={`h-full rounded-full transition-all duration-700 ease-out ${isSelected ? theme.primaryBg : 'bg-[#CCCCCC]'}`} style={{ width: `${percentage}%` }}></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {isSelected && <div className={`absolute -left-2 -right-2 top-0 bottom-0 ${theme.hover} rounded-lg -z-0 opacity-50`}></div>}
+                            </div>
+                        );
+                    })) : (<div className="text-center text-[#888] text-xs py-2">無消費紀錄</div>)}
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-[#888] pl-1">詳細清單</h3>
+                    {(statsDateFilter || statsCategoryFilter !== 'all') && (
+                        <div className="flex gap-2">
+                            {statsDateFilter && <span className="text-[10px] bg-[#3A3A3A] text-white px-2 py-0.5 rounded flex items-center gap-1">📅 {formatDateDot(statsDateFilter)}</span>}
+                            {statsCategoryFilter !== 'all' && <span className="text-[10px] bg-[#3A3A3A] text-white px-2 py-0.5 rounded flex items-center gap-1">🏷️ {expenseCategories.find(c=>c.id===statsCategoryFilter)?.label}</span>}
+                        </div>
+                    )}
+                </div>
+                {renderDetailedList()}
+            </div>
           </div>
         ) : (
           <div className="space-y-3 relative">
@@ -1597,7 +1682,7 @@ const TripPlanner = ({
                         <div className={`w-10 h-10 rounded-full ${theme.hover} flex items-center justify-center ${theme.primary} shrink-0 mt-1`}><Icon size={20} /></div>
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-start mb-2"><h3 className="text-xl font-bold text-[#3A3A3A] font-serif leading-tight truncate pr-2 flex items-center gap-2">{item.title}</h3><div className="flex gap-2 shrink-0"><button onClick={() => { setEditingItem(item); openEditModal(item); }} className={`text-[#999] hover:${theme.primary} p-1`}><Edit3 size={16}/></button><button onClick={() => handleDeleteItem(item.id)} className={`text-[#999] hover:${theme.danger} p-1`}><Trash2 size={16}/></button></div></div>
-                          <div className="text-xs text-[#888] mb-2 flex items-center gap-2"><Calendar size={12} className={theme.accent}/><span>{formatDateSlash(item.date)}</span><span>•</span><span className={`${theme.accent} font-bold flex items-center gap-1`}>{isEachPayer ? (<><div className="flex -space-x-1">{companions.map(c => <PayerAvatar key={c} name={c} size="w-3 h-3" />)}</div><span className="ml-1">各付</span></>) : (<>{payerDisplay} ● 支付</>)}</span></div>
+                          <div className="text-xs text-[#888] mb-2 flex items-center gap-2"><Calendar size={12} className={theme.accent}/><span>{formatDateDot(item.date)}</span><span>•</span><span className={`${theme.accent} font-bold flex items-center gap-1`}>{isEachPayer ? (<><div className="flex -space-x-1">{companions.map(c => <PayerAvatar key={c} name={c} size="w-3 h-3" />)}</div><span className="ml-1">各付</span></>) : (<>{payerDisplay} ● 支付</>)}</span></div>
                           <div className="flex justify-between items-end"><div className={`text-[10px] text-[#666] ${theme.bg} px-2 py-1.5 rounded flex flex-wrap items-center gap-x-2 gap-y-1`}><span className="font-bold">分攤:</span>{(item.shares && (item.shares.includes('ALL') || isEachPayer)) ? <span className={`${theme.primary} font-bold`}>全員</span> : item.shares && item.shares.map((share, idx) => (<React.Fragment key={share}><div className="flex items-center gap-1"><PayerAvatar name={share} size="w-3 h-3" /><span>{share}</span></div>{idx < item.shares.length - 1 && <span className="text-[#CCC]">|</span>}</React.Fragment>))}</div><div className="text-right shrink-0 ml-2"><div className={`text-sm font-serif font-bold ${theme.accent}`}>{item.currency} {formatMoney(item.cost)}</div><div className="text-[10px] text-[#999] font-medium">(NT$ {formatMoney(twd)})</div></div></div>
                         </div>
                       </div>
