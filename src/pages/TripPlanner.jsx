@@ -500,10 +500,51 @@ const TripPlanner = ({
       }
     }
     if (viewMode === 'itinerary') newItem.duration = parseInt(formData.duration) || 0;
+    
     let list = viewMode === 'expenses' ? [...expenses] : [...getCurrentList()];
-    if (editingItem) list = list.map(item => item.id === editingItem.id ? { ...newItem, completed: item.completed } : item);
-    else list = [...list, { ...newItem, completed: false }];
-    if (viewMode === 'itinerary') list = sortItemsByTime(list);
+    
+    if (editingItem) {
+        list = list.map(item => item.id === editingItem.id ? { ...newItem, completed: item.completed } : item);
+    } else {
+        list = [...list, { ...newItem, completed: false }];
+    }
+    
+    if (viewMode === 'itinerary') {
+        list = sortItemsByTime(list);
+
+        // --- 專家優化：跨日行程自動處理 ---
+        const startMinutes = timeToMinutes(newItem.time);
+        const endMinutes = startMinutes + newItem.duration;
+        
+        // 檢查是否跨日 (超過 24 小時/1440 分鐘)
+        if (endMinutes >= 1440) {
+            const nextDayIdx = activeDay + 1;
+            
+            // 確保還有下一天，才能新增卡片
+            if (nextDayIdx < tripSettings.days) {
+                const nextDayTime = minutesToTime(endMinutes); // Helper 會自動處理 mod 1440
+                
+                const nextDayItem = {
+                    ...newItem,
+                    id: Date.now() + Math.floor(Math.random() * 1000), // 產生新的唯一 ID
+                    time: nextDayTime,
+                    duration: 0, // 停留時間設為 0
+                    cost: 0, // 費用歸零避免重複計算
+                    image: newItem.image ? { ...newItem.image } : null // 複製照片連結
+                };
+
+                // 手動更新 itineraries 狀態以包含當前頁面與下一頁的變更
+                setItineraries(prev => ({
+                    ...prev,
+                    [activeDay]: list,
+                    [nextDayIdx]: sortItemsByTime([...(prev[nextDayIdx] || []), nextDayItem])
+                }));
+                setIsModalOpen(false);
+                return; // 跳過預設的 updateCurrentList，因為已經手動處理了
+            }
+        }
+    }
+    
     if (viewMode === 'expenses') setExpenses(list); else updateCurrentList(list);
     setIsModalOpen(false);
   };
