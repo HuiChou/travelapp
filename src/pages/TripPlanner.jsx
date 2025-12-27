@@ -813,6 +813,22 @@ const TripPlanner = ({
     });
   };
 
+  // 準備圖表資料
+  const getCategoryChartData = () => {
+    const data = statsMode === 'real' ? statisticsData.categoryStats.real : statisticsData.categoryStats.personal;
+    const chartData = Object.entries(data)
+        .map(([catId, amount]) => {
+            const catDef = expenseCategories.find(c => c.id === catId) || { label: '其他', icon: 'Coins' };
+            return { id: catId, label: catDef.label, icon: catDef.icon, amount };
+        })
+        .sort((a, b) => b.amount - a.amount);
+    
+    const maxAmount = Math.max(...chartData.map(c => c.amount), 0);
+    return { chartData, maxAmount };
+  };
+
+  const { chartData: categoryChartData, maxAmount: maxCategoryAmount } = getCategoryChartData();
+
   return (
     <div className={`min-h-screen ${theme.bg} text-[#464646] font-sans pb-32 ${theme.selection}`}>
       <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx, .xls" className="hidden" />
@@ -966,14 +982,24 @@ const TripPlanner = ({
               </div>
             </div>
 
-            {/* Settlement Suggestion */}
+            {/* Settlement Suggestion - Enhanced with Avatars */}
             <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
               <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2"><ArrowLeftRight size={16}/> 結算建議 (依篩選)</h3>
               <div className="space-y-3">
                 {statisticsData.transactions.length > 0 ? (
                   statisticsData.transactions.map((tx, i) => (
                       <div key={i} className={`flex items-center justify-between text-sm border-b ${theme.border} pb-3 last:border-0`}>
-                          <div className="flex items-center gap-2 flex-1"><span className="font-bold text-[#3A3A3A]">{tx.from}</span><ArrowRight size={14} className="text-[#CCC]" /><span className="font-bold text-[#3A3A3A]">{tx.to}</span></div>
+                          <div className="flex items-center gap-2 flex-1">
+                            <div className="flex items-center gap-1.5 bg-[#F9F9F9] pl-1 pr-2 py-1 rounded-full border border-[#EEE]">
+                                <PayerAvatar name={tx.from} companions={companions} theme={theme} size="w-5 h-5"/>
+                                <span className="font-bold text-[#3A3A3A] text-xs">{tx.from}</span>
+                            </div>
+                            <ArrowRight size={14} className="text-[#CCC]" />
+                            <div className="flex items-center gap-1.5 bg-[#F9F9F9] pl-1 pr-2 py-1 rounded-full border border-[#EEE]">
+                                <PayerAvatar name={tx.to} companions={companions} theme={theme} size="w-5 h-5"/>
+                                <span className="font-bold text-[#3A3A3A] text-xs">{tx.to}</span>
+                            </div>
+                          </div>
                           <div className={`font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(tx.amount)}</div>
                       </div>
                   ))
@@ -992,6 +1018,35 @@ const TripPlanner = ({
                                 <div className={`font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(total)}</div>
                             </div>
                         ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Category Chart - New Feature */}
+            {categoryChartData.length > 0 && (
+                <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
+                    <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2"><PieChart size={16}/> 類別消費統計</h3>
+                    <div className="space-y-3">
+                        {categoryChartData.map(cat => {
+                            const Icon = getIconComponent(cat.icon);
+                            const percent = maxCategoryAmount > 0 ? (cat.amount / maxCategoryAmount) * 100 : 0;
+                            return (
+                                <div key={cat.id} className="flex items-center gap-3 text-xs">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-[#F5F5F5] text-[#888] shrink-0 border border-[#EAEAEA]`}>
+                                        <Icon size={14} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between mb-1.5">
+                                            <span className="font-bold text-[#3A3A3A]">{cat.label}</span>
+                                            <span className={`font-serif font-bold ${theme.primary}`}>{currencySettings.selectedCountry.symbol} {formatMoney(cat.amount)}</span>
+                                        </div>
+                                        <div className="h-2 w-full bg-[#F0F0F0] rounded-full overflow-hidden">
+                                            <div className={`h-full ${theme.primaryBg} opacity-80 rounded-full transition-all duration-500 ease-out`} style={{ width: `${percent}%` }}></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
@@ -1327,62 +1382,6 @@ const TripPlanner = ({
             </div>
             <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] shrink-0`}><button type="button" onClick={() => setIsCompanionModalOpen(false)} className={`w-full ${theme.primaryBg} text-white py-2.5 rounded-lg text-xs font-bold hover:opacity-90`}>完成</button></div>
           </div>
-        </div>
-      )}
-
-      {/* Cloud File Load Modal */}
-      {isCloudLoadModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#3A3A3A]/40 backdrop-blur-sm">
-           <div className={`bg-[#FDFCFB] w-full max-w-md rounded-xl shadow-2xl flex flex-col max-h-[80vh] border ${theme.border} animate-in zoom-in-95`}>
-             <div className="p-4 border-b border-[#F0F0F0] flex justify-between items-center bg-white rounded-t-xl">
-                 <h2 className="text-lg font-bold font-serif text-[#3A3A3A] flex items-center gap-2"><CloudDownload size={20}/> 選擇雲端檔案</h2>
-                 <button onClick={() => setIsCloudLoadModalOpen(false)}><X size={20} className="text-[#999] hover:text-[#333]" /></button>
-             </div>
-             <div className="p-2 overflow-y-auto flex-1 bg-[#F9F8F6]">
-                 {isLoadingCloudList ? (
-                     <div className="flex flex-col items-center justify-center py-10 text-[#888] gap-2">
-                         <Loader2 size={30} className="animate-spin text-[#A98467]"/>
-                         <span className="text-sm font-bold">搜尋 Google Drive 中...</span>
-                     </div>
-                 ) : isProcessingCloudFile ? (
-                     <div className="flex flex-col items-center justify-center py-10 text-[#888] gap-2">
-                         <Loader2 size={30} className="animate-spin text-[#5F6F52]"/>
-                         <span className="text-sm font-bold">讀取並解析檔案中...</span>
-                     </div>
-                 ) : cloudFiles.length === 0 ? (
-                     <div className="text-center py-10 text-[#888]">
-                         <FileSpreadsheet size={40} className="mx-auto mb-2 opacity-20"/>
-                         <p className="text-sm font-bold">找不到以 "TravelApp_" 開頭的檔案</p>
-                         <p className="text-xs mt-1">請先儲存過一次檔案，或檢查雲端垃圾桶。</p>
-                     </div>
-                 ) : (
-                     <div className="space-y-2">
-                         {cloudFiles.map(file => (
-                             <button 
-                                key={file.id}
-                                onClick={() => loadFromGoogleSheet(file.id, file.name)}
-                                className={`w-full text-left p-3 rounded-lg border ${theme.border} bg-white hover:border-[#A98467] hover:shadow-md transition-all group`}
-                             >
-                                 <div className="flex items-center gap-3">
-                                     <div className={`w-10 h-10 rounded-full bg-[#EBE9E4] flex items-center justify-center group-hover:bg-[#A98467] group-hover:text-white transition-colors`}>
-                                         <FileSpreadsheet size={20}/>
-                                     </div>
-                                     <div className="flex-1 min-w-0">
-                                         <div className="font-bold text-[#3A3A3A] truncate text-sm">{file.name}</div>
-                                         <div className="text-[10px] text-[#888] mt-0.5">最後修改: {new Date(file.modifiedTime).toLocaleString()}</div>
-                                     </div>
-                                     <Download size={16} className="text-[#CCC] group-hover:text-[#A98467]"/>
-                                 </div>
-                             </button>
-                         ))}
-                     </div>
-                 )}
-             </div>
-             <div className="p-3 border-t border-[#F0F0F0] bg-white rounded-b-xl flex justify-between items-center">
-                 <button onClick={fetchCloudFiles} className="text-xs font-bold text-[#A98467] flex items-center gap-1 hover:underline"><RefreshCw size={12}/> 重新整理</button>
-                 <button onClick={() => setIsCloudLoadModalOpen(false)} className="px-4 py-2 text-xs font-bold text-[#888] hover:bg-[#F0F0F0] rounded-lg">關閉</button>
-             </div>
-           </div>
         </div>
       )}
 
