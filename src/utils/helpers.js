@@ -201,6 +201,7 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   const ovMap = {};
   overviewData.forEach(row => { if(row[0]) ovMap[row[0]] = row[1]; });
   
+  // Logic: Use internal title, fallback to filename if empty
   const title = ovMap["專案標題"] || fileName.replace('TravelApp_', '').replace('.xlsx', '');
   const startDate = ovMap["出發日期"] || new Date().toISOString().split('T')[0];
   const endDate = ovMap["回國日期"] || getNextDay(startDate);

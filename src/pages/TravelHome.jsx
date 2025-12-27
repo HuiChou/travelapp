@@ -28,10 +28,10 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
                   onClick={onImportCloud} 
                   disabled={isImporting}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-[#E6E2D3] text-xs font-bold text-[#5F6F52] hover:bg-[#F2F0EB] transition-colors`}
-                  title="掃描 Google Drive 中開頭為 TravelApp_ 的檔案"
+                  title="掃描 Google Drive 中所有包含 TravelApp_ 的試算表"
                 >
                     {isImporting ? <Loader2 size={14} className="animate-spin"/> : <CloudDownload size={14} />}
-                    {isImporting ? "掃描匯入中..." : "雲端掃描匯入"}
+                    {isImporting ? "正在掃描雲端..." : "匯入 TravelApp 雲端專案"}
                 </button>
             )}
             {googleUser ? (

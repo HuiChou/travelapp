@@ -23,8 +23,11 @@ export const ICON_REGISTRY = {
 export const getIconComponent = (iconName) => ICON_REGISTRY[iconName] || Camera;
 
 // --- Google API ---
+// 使用您的 Client ID
 export const GOOGLE_CLIENT_ID = "456137719976-dp4uin8ae10f332qbhqm447nllr2u4ec.apps.googleusercontent.com";
-export const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file";
+
+// CRITICAL CHANGE: Changed scope to 'drive' to access files created manually (e.g., via "Make a copy")
+export const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive";
 
 // --- Defaults ---
 export const DEFAULT_ITINERARY_CATEGORIES = [

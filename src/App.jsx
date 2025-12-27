@@ -122,7 +122,7 @@ export default function App() {
       }
   };
 
-  // --- Cloud Import Logic (Optimization) ---
+  // --- Cloud Import Logic (Optimized for copies) ---
   const handleImportFromCloud = async () => {
     if (!googleUser || !gapiInited) {
         alert("請先登入 Google 帳號才能使用雲端匯入功能。");
@@ -134,17 +134,20 @@ export default function App() {
 
     try {
         // 1. Search for files
+        // Use 'contains' to match "TravelApp_Title" or "Copy of TravelApp_Title"
+        // Ensure trashed is false
+        // MimeType must be Google Spreadsheet. If user uploaded .xlsx, it won't work with batchGet unless converted.
         const q = "name contains 'TravelApp_' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false";
         const response = await window.gapi.client.drive.files.list({
             q: q,
-            fields: 'files(id, name, modifiedTime)',
+            fields: 'files(id, name, modifiedTime, mimeType)',
             orderBy: 'modifiedTime desc',
             pageSize: 50
         });
 
         const files = response.result.files;
         if (!files || files.length === 0) {
-            alert("找不到符合條件 (TravelApp_ 開頭) 的雲端檔案。");
+            alert("在雲端硬碟中找不到任何包含 'TravelApp_' 的 Google 試算表。\n\n提示：\n1. 如果您剛複製檔案，請稍等幾秒再試。\n2. 請確認檔案是 Google 試算表格式，而非直接上傳的 .xlsx 檔。");
             setIsImporting(false);
             return;
         }
@@ -152,8 +155,7 @@ export default function App() {
         const newProjects = [];
         const newProjectsData = {};
         
-        // 2. Filter out already existing files (check by googleDriveFileId in allProjectsData)
-        // Get all existing file IDs
+        // Get all existing file IDs currently loaded to prevent duplicates
         const existingFileIds = new Set(
             Object.values(allProjectsData)
                 .map(p => p.googleDriveFileId)
@@ -161,57 +163,70 @@ export default function App() {
         );
 
         for (const file of files) {
+            // Check if we already have this file ID imported
             if (existingFileIds.has(file.id)) {
-                continue; // Skip existing
+                continue; 
             }
 
-            // 3. Fetch content for new file
-            const ranges = [
-                "專案概覽!A:B", "行程表!A:H", "費用!A:H", "管理類別!A:E", 
-                "行李!A:B", "購物!A:F", "美食!A:F", "景點!A:F"
-            ];
-            
-            const sheetRes = await window.gapi.client.sheets.spreadsheets.values.batchGet({
-                spreadsheetId: file.id,
-                ranges: ranges,
-                valueRenderOption: 'FORMATTED_VALUE'
-            });
+            console.log(`Processing file: ${file.name} (${file.id})`);
 
-            // 4. Parse data using helper
-            const projectData = parseProjectDataFromGAPI(file.id, file.name, sheetRes.result.valueRanges);
-            
-            // 5. Create new Project ID
-            // We need to be careful with ID generation in a loop.
-            // Calculate a base ID relative to current max.
-            const currentMaxId = Math.max(
-                ...projects.map(p => p.id), 
-                ...newProjects.map(p => p.id), 
-                0
-            );
-            const nextId = currentMaxId + 1;
+            try {
+                // 3. Fetch content for new file
+                const ranges = [
+                    "專案概覽!A:B", "行程表!A:H", "費用!A:H", "管理類別!A:E", 
+                    "行李!A:B", "購物!A:F", "美食!A:F", "景點!A:F"
+                ];
+                
+                const sheetRes = await window.gapi.client.sheets.spreadsheets.values.batchGet({
+                    spreadsheetId: file.id,
+                    ranges: ranges,
+                    valueRenderOption: 'FORMATTED_VALUE'
+                });
 
-            const newProjectHeader = {
-                id: nextId,
-                name: projectData.tripSettings.title,
-                lastModified: file.modifiedTime
-            };
+                // 4. Parse data using helper
+                const projectData = parseProjectDataFromGAPI(file.id, file.name, sheetRes.result.valueRanges);
+                
+                // Special handling: If title seems generic or empty because of copy, maybe append something?
+                // For now, parseProjectDataFromGAPI handles title extraction from the sheet.
+                
+                // 5. Create new Project ID locally
+                const currentMaxId = Math.max(
+                    ...projects.map(p => p.id), 
+                    ...newProjects.map(p => p.id), 
+                    0
+                );
+                const nextId = currentMaxId + 1;
 
-            newProjects.push(newProjectHeader);
-            newProjectsData[nextId] = projectData;
-            importedCount++;
+                const newProjectHeader = {
+                    id: nextId,
+                    name: projectData.tripSettings.title,
+                    lastModified: file.modifiedTime
+                };
+
+                newProjects.push(newProjectHeader);
+                newProjectsData[nextId] = projectData;
+                importedCount++;
+            } catch (err) {
+                console.warn(`Failed to parse file ${file.name}:`, err);
+                // Continue to next file even if one fails
+            }
         }
 
         if (importedCount > 0) {
             setProjects(prev => [...prev, ...newProjects]);
             setAllProjectsData(prev => ({ ...prev, ...newProjectsData }));
-            alert(`成功匯入 ${importedCount} 個新旅程！`);
+            alert(`掃描完成！成功匯入 ${importedCount} 個新旅程。`);
         } else {
-            alert("所有雲端檔案皆已存在於列表中，無需匯入。");
+            alert(`掃描完成，未發現新檔案。\n(找到 ${files.length} 個檔案，但它們都已經在您的列表中了)`);
         }
 
     } catch (error) {
         console.error("Cloud Import Error:", error);
-        alert("匯入失敗，請檢查網路或權限。");
+        if (error.result?.error?.code === 403 || error.status === 403) {
+            alert("權限不足。我們更新了 Google Drive 存取權限設定以支援掃描功能。\n\n請登出 Google 帳號後，重新登入並授權即可解決。");
+        } else {
+            alert("匯入失敗，請檢查網路連線。");
+        }
     } finally {
         setIsImporting(false);
     }
