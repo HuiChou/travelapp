@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Plus, ChevronRight, X, LogIn } from 'lucide-react';
+import { Plus, ChevronRight, X, LogIn, CloudDownload, Loader2 } from 'lucide-react';
 import { THEMES } from '../utils/constants';
 import { formatLastModified } from '../utils/helpers';
 
-const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, onOpenProject, googleUser, handleGoogleLogin, handleGoogleLogout }) => {
+const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, onOpenProject, googleUser, handleGoogleLogin, handleGoogleLogout, onImportCloud, isImporting }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [clickingId, setClickingId] = useState(null);
   
@@ -12,7 +12,6 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
 
   const handleProjectClick = (project) => {
     setClickingId(project.id);
-    // Short timeout to show the "saturated" state before switching
     setTimeout(() => {
       onOpenProject(project);
       setClickingId(null);
@@ -23,7 +22,18 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
     <div className={`min-h-screen ${theme.bg} text-[#464646] font-serif ${theme.selection} flex flex-col`}>
       <nav className={`w-full px-4 md:px-8 py-6 flex justify-between items-center border-b ${theme.border}/50`}>
         <div className="flex items-center gap-2"><div className={`w-4 h-4 ${theme.primaryBg} rounded-full opacity-80`}></div><span className={`text-xl tracking-widest font-bold ${theme.primary}`}> 𝐓𝐑𝐀𝐕𝐄𝐋 </span></div>
-        <div>
+        <div className="flex items-center gap-3">
+            {googleUser && (
+                <button 
+                  onClick={onImportCloud} 
+                  disabled={isImporting}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-[#E6E2D3] text-xs font-bold text-[#5F6F52] hover:bg-[#F2F0EB] transition-colors`}
+                  title="掃描 Google Drive 中開頭為 TravelApp_ 的檔案"
+                >
+                    {isImporting ? <Loader2 size={14} className="animate-spin"/> : <CloudDownload size={14} />}
+                    {isImporting ? "掃描匯入中..." : "雲端掃描匯入"}
+                </button>
+            )}
             {googleUser ? (
                 <button onClick={handleGoogleLogout} className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-[#E6E2D3] text-xs font-bold text-[#888] hover:bg-[#F2F0EB] transition-colors`}>
                     <div className="w-2 h-2 rounded-full bg-green-500"></div> Google 已登入
@@ -47,7 +57,7 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
               const pData = allProjectsData[project.id] || {};
               const settings = pData.tripSettings || {};
               const projectThemeId = pData.themeId || 'mori';
-              const pTheme = THEMES[projectThemeId];
+              const pTheme = THEMES[projectThemeId] || THEMES.mori;
               const isClicking = clickingId === project.id;
               
               const startDate = settings.startDate ? settings.startDate.replace(/-/g, '/') : '????/??/??';
@@ -77,7 +87,6 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
                   
                   <div className="flex items-center gap-2">
                     <ChevronRight size={16} className={`transition-all duration-300 ${isClicking ? 'text-white' : 'text-[#E6E2D3] group-hover:opacity-0 absolute right-8'}`} />
-                    {/* Delete button only shows on hover, hides on click to avoid confusion */}
                     {!isClicking && (
                       <button 
                         onClick={(e) => onDeleteProject(e, project.id)} 

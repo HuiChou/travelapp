@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import TravelHome from './pages/TravelHome';
 import TripPlanner from './pages/TripPlanner';
 import { THEMES, GOOGLE_CLIENT_ID, SCOPES } from './utils/constants';
-import { generateNewProjectData } from './utils/helpers';
+import { generateNewProjectData, parseProjectDataFromGAPI } from './utils/helpers';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('home'); 
   const [activeProject, setActiveProject] = useState(null);
   const [currentThemeId, setCurrentThemeId] = useState('mori');
+  const [isImporting, setIsImporting] = useState(false);
   
   // --- LocalStorage Logic ---
   const [projects, setProjects] = useState(() => {
@@ -121,7 +122,101 @@ export default function App() {
       }
   };
 
-  // 防呆：確保 Theme 存在，若不存在則使用預設值 mori
+  // --- Cloud Import Logic (Optimization) ---
+  const handleImportFromCloud = async () => {
+    if (!googleUser || !gapiInited) {
+        alert("請先登入 Google 帳號才能使用雲端匯入功能。");
+        return;
+    }
+
+    setIsImporting(true);
+    let importedCount = 0;
+
+    try {
+        // 1. Search for files
+        const q = "name contains 'TravelApp_' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false";
+        const response = await window.gapi.client.drive.files.list({
+            q: q,
+            fields: 'files(id, name, modifiedTime)',
+            orderBy: 'modifiedTime desc',
+            pageSize: 50
+        });
+
+        const files = response.result.files;
+        if (!files || files.length === 0) {
+            alert("找不到符合條件 (TravelApp_ 開頭) 的雲端檔案。");
+            setIsImporting(false);
+            return;
+        }
+
+        const newProjects = [];
+        const newProjectsData = {};
+        
+        // 2. Filter out already existing files (check by googleDriveFileId in allProjectsData)
+        // Get all existing file IDs
+        const existingFileIds = new Set(
+            Object.values(allProjectsData)
+                .map(p => p.googleDriveFileId)
+                .filter(id => id)
+        );
+
+        for (const file of files) {
+            if (existingFileIds.has(file.id)) {
+                continue; // Skip existing
+            }
+
+            // 3. Fetch content for new file
+            const ranges = [
+                "專案概覽!A:B", "行程表!A:H", "費用!A:H", "管理類別!A:E", 
+                "行李!A:B", "購物!A:F", "美食!A:F", "景點!A:F"
+            ];
+            
+            const sheetRes = await window.gapi.client.sheets.spreadsheets.values.batchGet({
+                spreadsheetId: file.id,
+                ranges: ranges,
+                valueRenderOption: 'FORMATTED_VALUE'
+            });
+
+            // 4. Parse data using helper
+            const projectData = parseProjectDataFromGAPI(file.id, file.name, sheetRes.result.valueRanges);
+            
+            // 5. Create new Project ID
+            // We need to be careful with ID generation in a loop.
+            // Calculate a base ID relative to current max.
+            const currentMaxId = Math.max(
+                ...projects.map(p => p.id), 
+                ...newProjects.map(p => p.id), 
+                0
+            );
+            const nextId = currentMaxId + 1;
+
+            const newProjectHeader = {
+                id: nextId,
+                name: projectData.tripSettings.title,
+                lastModified: file.modifiedTime
+            };
+
+            newProjects.push(newProjectHeader);
+            newProjectsData[nextId] = projectData;
+            importedCount++;
+        }
+
+        if (importedCount > 0) {
+            setProjects(prev => [...prev, ...newProjects]);
+            setAllProjectsData(prev => ({ ...prev, ...newProjectsData }));
+            alert(`成功匯入 ${importedCount} 個新旅程！`);
+        } else {
+            alert("所有雲端檔案皆已存在於列表中，無需匯入。");
+        }
+
+    } catch (error) {
+        console.error("Cloud Import Error:", error);
+        alert("匯入失敗，請檢查網路或權限。");
+    } finally {
+        setIsImporting(false);
+    }
+  };
+
   const theme = (THEMES && currentThemeId && THEMES[currentThemeId]) ? THEMES[currentThemeId] : THEMES.mori; 
 
   const handleOpenProject = (project) => {
@@ -174,13 +269,9 @@ export default function App() {
   };
 
   if (currentView === 'planner' && activeProject) {
-    // 取得預設資料結構
     const defaultData = generateNewProjectData(activeProject.name);
-    // 取得已儲存的資料 (若無則為空物件)
     const storedData = allProjectsData[activeProject.id] || {};
     
-    // --- 嚴格的資料合併與防呆 ---
-    // 確保幣別設定完整 (避免舊存檔缺少 selectedCountry 導致崩潰)
     const mergedCurrencySettings = { 
         ...defaultData.currencySettings, 
         ...(storedData.currencySettings || {}) 
@@ -189,20 +280,17 @@ export default function App() {
         mergedCurrencySettings.selectedCountry = defaultData.currencySettings.selectedCountry;
     }
 
-    // 確保類別結構完整
     const mergedCategories = {
         itinerary: storedData.categories?.itinerary || defaultData.categories.itinerary,
         expense: storedData.categories?.expense || defaultData.categories.expense
     };
 
-    // 合併最終的 Project Data
     const projectData = { 
         ...defaultData, 
         ...storedData, 
         tripSettings: { ...defaultData.tripSettings, ...(storedData.tripSettings || {}) }, 
         currencySettings: mergedCurrencySettings,
         categories: mergedCategories,
-        // 確保列表類資料至少是空陣列/物件，避免為 null/undefined
         itineraries: storedData.itineraries || defaultData.itineraries,
         expenses: storedData.expenses || defaultData.expenses,
         packingList: storedData.packingList || defaultData.packingList,
@@ -236,6 +324,8 @@ export default function App() {
       googleUser={googleUser}
       handleGoogleLogin={handleGoogleLogin}
       handleGoogleLogout={handleGoogleLogout}
+      onImportCloud={handleImportFromCloud}
+      isImporting={isImporting}
     />
   );
 }
