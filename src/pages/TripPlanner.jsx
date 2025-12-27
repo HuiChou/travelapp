@@ -9,7 +9,8 @@ import {
   Ticket, Bus, Car, Ship, Music, Gamepad2, Gift, Shirt, Briefcase, 
   Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
   Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2, RefreshCw, Printer,
-  Calendar, Tag, ChevronDown, Divide, Filter, FileSpreadsheet, FilterX
+  Calendar, Tag, ChevronDown, Divide, Filter, FileSpreadsheet, FilterX,
+  Image as ImageIcon, ExternalLink 
 } from 'lucide-react';
 
 import { 
@@ -70,6 +71,10 @@ const TripPlanner = ({
   const [isCloudLoadModalOpen, setIsCloudLoadModalOpen] = useState(false);
   const [isLoadingCloudList, setIsLoadingCloudList] = useState(false);
   const [isProcessingCloudFile, setIsProcessingCloudFile] = useState(false);
+
+  // Google Drive Image State
+  const [driveFolderId, setDriveFolderId] = useState(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   useEffect(() => {
     if (window.XLSX) {
@@ -224,6 +229,92 @@ const TripPlanner = ({
     });
   }, [tripSettings, companions, currencySettings, itineraries, packingList, shoppingList, foodList, sightseeingList, expenses, itineraryCategories, expenseCategories, googleDriveFileId]);
 
+  // --- Google Drive Image Helpers ---
+  const ensureTravelAppFolder = async () => {
+      if (driveFolderId) return driveFolderId;
+      try {
+          const q = "name = 'TravelApp' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+          const res = await window.gapi.client.drive.files.list({ q, fields: 'files(id)' });
+          if (res.result.files.length > 0) {
+              const id = res.result.files[0].id;
+              setDriveFolderId(id);
+              return id;
+          }
+          const createRes = await window.gapi.client.drive.files.create({
+              resource: { name: 'TravelApp', mimeType: 'application/vnd.google-apps.folder' },
+              fields: 'id'
+          });
+          const newId = createRes.result.id;
+          setDriveFolderId(newId);
+          return newId;
+      } catch (e) {
+          console.error("Folder Check/Create Failed", e);
+          throw e;
+      }
+  };
+
+  const handleImageUpload = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (!googleUser || !gapiInited) { alert("請先登入 Google 帳號才能上傳照片"); e.target.value = null; return; }
+      if (!formData.title) { alert("請先輸入項目標題，以便為照片命名"); e.target.value = null; return; }
+
+      setIsUploadingImage(true);
+      try {
+          const folderId = await ensureTravelAppFolder();
+          
+          const metadata = {
+              name: formData.title, // 使用項目標題命名
+              parents: [folderId]
+          };
+
+          const form = new FormData();
+          form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+          form.append('file', file);
+
+          const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,thumbnailLink', {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + googleUser.accessToken },
+              body: form
+          });
+
+          if (!res.ok) throw new Error("Upload API failed");
+          
+          const data = await res.json();
+          setFormData(prev => ({
+              ...prev,
+              image: {
+                  id: data.id,
+                  link: data.webViewLink,
+                  thumbnail: data.thumbnailLink
+              }
+          }));
+      } catch (err) {
+          console.error("Upload Error:", err);
+          alert("照片上傳失敗，請稍後再試。");
+      } finally {
+          setIsUploadingImage(false);
+          e.target.value = null;
+      }
+  };
+
+  const handleImageDelete = async () => {
+      if (!formData.image?.id) return;
+      if (!window.confirm("確定移除照片？這將會一併從 Google Drive 刪除此檔案。")) return;
+
+      setIsUploadingImage(true);
+      try {
+          await window.gapi.client.drive.files.delete({ fileId: formData.image.id });
+          setFormData(prev => ({ ...prev, image: null }));
+      } catch (err) {
+          console.error("Delete Error:", err);
+          alert("刪除失敗，可能檔案已不存在。");
+          setFormData(prev => ({ ...prev, image: null })); // 若遠端已刪除，本地也清空
+      } finally {
+          setIsUploadingImage(false);
+      }
+  };
+
   const [statsMode, setStatsMode] = useState('real');
   const [statsCategoryFilter, setStatsCategoryFilter] = useState('all');
   const [statsPersonFilter, setStatsPersonFilter] = useState('all');
@@ -334,7 +425,7 @@ const TripPlanner = ({
 
   const openAddModal = () => {
     setEditingItem(null);
-    const baseData = { title: '', location: '', cost: '', costType: 'FOREIGN', website: '', notes: '', region: '' };
+    const baseData = { title: '', location: '', cost: '', costType: 'FOREIGN', website: '', notes: '', region: '', image: null };
     if (viewMode === 'itinerary') {
       const currentList = getCurrentList();
       let defaultTime = '09:00';
@@ -417,7 +508,25 @@ const TripPlanner = ({
     setIsModalOpen(false);
   };
 
-  const handleDeleteItem = (id) => { if (viewMode === 'expenses') setExpenses(expenses.filter(item => item.id !== id)); else updateCurrentList(getCurrentList().filter(item => item.id !== id)); };
+  const handleDeleteItem = async (id) => { 
+      // 1. Find item to delete
+      const sourceList = viewMode === 'expenses' ? expenses : getCurrentList();
+      const itemToDelete = sourceList.find(i => i.id === id);
+
+      // 2. Optimistic UI delete
+      if (viewMode === 'expenses') setExpenses(expenses.filter(item => item.id !== id)); 
+      else updateCurrentList(getCurrentList().filter(item => item.id !== id)); 
+
+      // 3. Background delete image from Drive
+      if (itemToDelete?.image?.id && googleUser && gapiInited) {
+          try {
+              await window.gapi.client.drive.files.delete({ fileId: itemToDelete.image.id });
+              console.log("Deleted associated image from Drive");
+          } catch (e) {
+              console.error("Failed to delete image from Drive", e);
+          }
+      }
+  };
 
   const handleTotalCostChange = (e) => {
     const val = e.target.value.replace(/,/g, '');
@@ -597,7 +706,10 @@ const TripPlanner = ({
              <div className="flex items-center gap-3">
                <div className={`w-8 h-8 rounded-full ${theme.hover} flex items-center justify-center ${theme.primary} shrink-0`}><ItemIcon size={16} /></div>
                <div className="flex-1 min-w-0">
-                 <div className="text-sm font-bold text-[#3A3A3A] font-serif truncate">{exp.title}</div>
+                 <div className="flex items-center gap-2">
+                    <div className="text-sm font-bold text-[#3A3A3A] font-serif truncate">{exp.title}</div>
+                    {exp.image && <a href={exp.image.link} target="_blank" className="text-[#888] hover:text-[#5F6F52]" onClick={e => e.stopPropagation()}><ImageIcon size={14}/></a>}
+                 </div>
                  <div className="text-[10px] text-[#888] mt-1 flex flex-wrap gap-1 items-center">
                    {statsMode === 'personal' ? (
                      <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.realPayer} companions={companions} theme={theme}/><span>{exp.realPayer}</span></span></>
@@ -826,6 +938,7 @@ const TripPlanner = ({
                         <div className="flex justify-between items-start mb-2">
                            <h3 className="text-xl font-bold text-[#3A3A3A] font-serif leading-tight pr-2 flex items-center flex-wrap gap-2">
                              <span>{item.title}</span>
+                             {item.image && <a href={item.image.link} target="_blank" className="text-[#888] hover:text-[#5F6F52] transition-colors" title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}
                              <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.title, item.id + '_title'); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder} opacity-0 group-hover:opacity-100 transition-opacity shrink-0`} title="複製標題">{copiedId === (item.id + '_title') ? <Check size={12} className={theme.primary} /> : <Copy size={12} />}</button>
                            </h3>
                            <div className="flex gap-2 shrink-0"><button onClick={() => { setEditingItem(item); openEditModal(item); }} className={`text-[#999] hover:${theme.primary} p-1`}><Edit3 size={16}/></button><button onClick={() => handleDeleteItem(item.id)} className={`text-[#999] hover:${theme.danger} p-1`}><Trash2 size={16}/></button></div>
@@ -864,7 +977,7 @@ const TripPlanner = ({
                           </div>
                           <div className="pl-2">
                             <div className="flex justify-between items-start gap-2 mb-2">
-                                <div className="flex-1"><h3 className="text-xl font-bold text-[#3A3A3A] font-serif leading-tight flex items-center flex-wrap gap-2"><span>{item.title}</span><button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.title, item.id + '_title'); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder} opacity-0 group-hover/card:opacity-100 transition-opacity shrink-0`} title="複製標題">{copiedId === (item.id + '_title') ? <Check size={12} className={theme.primary} /> : <Copy size={12} />}</button>{item.website && <a href={item.website} target="_blank" rel="noreferrer" className={`text-[#888] hover:${theme.accent}`} onClick={e => e.stopPropagation()}><Globe size={14} /></a>}</h3></div>
+                                <div className="flex-1"><h3 className="text-xl font-bold text-[#3A3A3A] font-serif leading-tight flex items-center flex-wrap gap-2"><span>{item.title}</span>{item.image && <a href={item.image.link} target="_blank" className="text-[#888] hover:text-[#5F6F52] transition-colors" title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}<button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.title, item.id + '_title'); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder} opacity-0 group-hover/card:opacity-100 transition-opacity shrink-0`} title="複製標題">{copiedId === (item.id + '_title') ? <Check size={12} className={theme.primary} /> : <Copy size={12} />}</button>{item.website && <a href={item.website} target="_blank" rel="noreferrer" className={`text-[#888] hover:${theme.accent}`} onClick={e => e.stopPropagation()}><Globe size={14} /></a>}</h3></div>
                                 {item.cost > 0 && (<div className="text-right shrink-0"><div className={`text-sm font-serif font-bold ${theme.accent} flex items-center justify-end gap-1`}><Coins size={12} />{currencySettings.selectedCountry.symbol} {formatMoney(item.cost)}</div></div>)}
                             </div>
                             <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-[#666666]">{item.location && (<div className={`flex items-center gap-1 group/location -ml-1.5 px-1.5 py-0.5 rounded ${theme.hover} transition-colors`}><MapPin size={12} className={theme.accent} /><span>{item.location}</span><div className="flex gap-2 ml-1 opacity-0 group-hover/location:opacity-100 transition-opacity"><button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.location, item.id); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder}`}>{copiedId === item.id ? <Check size={14} className={theme.primary} /> : <Copy size={14} />}</button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.location)}`} target="_blank" rel="noreferrer" className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder}`} onClick={(e) => e.stopPropagation()}><Navigation size={14} /></a></div></div>)}<div className="flex items-center gap-1 px-1.5 py-0.5"><Clock size={12} className={theme.accent} /> 停留: {formatDurationDisplay(item.duration)}</div></div>
@@ -886,6 +999,7 @@ const TripPlanner = ({
                       <div className="flex justify-between items-start gap-2">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h3 className={`text-lg font-bold font-serif hover:${theme.primary} transition-colors ${item.completed ? 'text-[#AAA] line-through' : 'text-[#3A3A3A]'}`} onClick={(e) => { e.stopPropagation(); openEditModal(item); }}>{item.title}</h3>
+                            {item.image && <a href={item.image.link} target="_blank" className="text-[#888] hover:text-[#5F6F52] transition-colors" title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}
                             <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.title, item.id + '_title'); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder} opacity-0 group-hover:opacity-100 transition-opacity shrink-0`} title="複製標題">{copiedId === (item.id + '_title') ? <Check size={12} className={theme.primary} /> : <Copy size={12} />}</button>
                           </div>
                           {item.cost > 0 && (checklistTab !== 'packing') && !item.completed && (<div className="text-right shrink-0"><div className={`text-sm font-bold ${theme.accent}`}>{currencySettings.selectedCountry.symbol} {formatMoney(item.cost)}</div></div>)}
@@ -983,12 +1097,39 @@ const TripPlanner = ({
                     )}
                   </>
                 )}
+                
+                {/* --- Image Upload Section --- */}
+                <div className={`p-4 rounded-lg bg-[#F9F9F9] border ${theme.border}`}>
+                    <label className="block text-xs font-bold text-[#888] mb-2 flex items-center gap-1"><ImageIcon size={14}/> 照片 (Google Drive)</label>
+                    {formData.image ? (
+                        <div className="flex items-center gap-3">
+                            <div className="flex-1 text-xs text-[#5F6F52] font-medium truncate flex items-center gap-1">
+                                <CheckCircle2 size={14} className="text-green-600"/> 已上傳: {formData.title}
+                            </div>
+                            <a href={formData.image.link} target="_blank" className={`p-2 rounded hover:bg-[#EEE] text-[#888]`} title="查看"><ExternalLink size={16}/></a>
+                            <button type="button" onClick={handleImageDelete} className={`p-2 rounded hover:bg-[#FFF0F0] text-[#C55A5A]`} title="刪除照片" disabled={isUploadingImage}><Trash2 size={16}/></button>
+                        </div>
+                    ) : (
+                        <div className="relative">
+                            <input 
+                                type="file" 
+                                accept="image/*" 
+                                onChange={handleImageUpload} 
+                                disabled={isUploadingImage}
+                                className={`block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:${theme.primaryBg} file:text-white hover:file:opacity-90 cursor-pointer disabled:opacity-50`}
+                            />
+                            {isUploadingImage && <div className="absolute right-0 top-0 bottom-0 flex items-center pr-2"><Loader2 size={16} className="animate-spin text-[#A98467]"/></div>}
+                        </div>
+                    )}
+                    <p className="text-[10px] text-[#AAA] mt-2 pl-1">* 照片將儲存於雲端 "TravelApp" 資料夾，並以標題自動命名。</p>
+                </div>
+
                 {(viewMode === 'itinerary' || checklistTab !== 'packing') && (
                   <div><label className="block text-xs font-bold text-[#888] mb-1">備註</label><textarea rows={2} placeholder="備註..." value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-3 text-base text-[#666] resize-none focus:outline-none focus:${theme.primaryBorder}`} /></div>
                 )}
               </form>
             </div>
-            <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] shrink-0`}><button type="submit" form="item-form" className={`w-full bg-[#3A3A3A] text-[#F9F8F6] py-3 rounded-lg font-bold text-sm hover:${theme.primaryBg} transition-colors`}>{editingItem ? '儲存' : '新增'}</button></div>
+            <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] shrink-0`}><button type="submit" form="item-form" className={`w-full bg-[#3A3A3A] text-[#F9F8F6] py-3 rounded-lg font-bold text-sm hover:${theme.primaryBg} transition-colors`} disabled={isUploadingImage}>{isUploadingImage ? '上傳中...' : (editingItem ? '儲存' : '新增')}</button></div>
           </div>
         </div>
       )}
@@ -1046,7 +1187,7 @@ const TripPlanner = ({
         </div>
       )}
 
-      {/* Cloud File Load Modal (Missing in previous version) */}
+      {/* Cloud File Load Modal */}
       {isCloudLoadModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#3A3A3A]/40 backdrop-blur-sm">
            <div className={`bg-[#FDFCFB] w-full max-w-md rounded-xl shadow-2xl flex flex-col max-h-[80vh] border ${theme.border} animate-in zoom-in-95`}>
