@@ -10,7 +10,7 @@ import {
   Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
   Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2, RefreshCw, Printer,
   Calendar, Tag, ChevronDown, Divide, Filter, FileSpreadsheet, FilterX,
-  Image as ImageIcon, ExternalLink 
+  Image as ImageIcon, ExternalLink, ArrowDownCircle
 } from 'lucide-react';
 
 import { 
@@ -370,8 +370,47 @@ const TripPlanner = ({
     });
   };
 
+  // --- 專家優化：動態計算跨日行程 (Shadow Items) ---
+  const getShadowItems = (dayIdx, allItineraries) => {
+    if (dayIdx <= 0) return [];
+    
+    // 檢查前一天的行程
+    const prevDayItems = allItineraries[dayIdx - 1] || [];
+    const shadows = [];
+    
+    prevDayItems.forEach(item => {
+        const startMin = timeToMinutes(item.time);
+        const duration = item.duration || 0;
+        const endMin = startMin + duration;
+        
+        // 如果行程結束時間超過 24 小時 (1440 分鐘)
+        if (endMin >= 1440) {
+            // 計算溢出的時間點 (例如 26:00 -> 02:00)
+            // minutesToTime 函式已經會處理 % 24 的邏輯
+            const overflowTime = minutesToTime(endMin); 
+            
+            shadows.push({
+                ...item,
+                id: `shadow-${item.id}`, // 使用特殊 ID 避免衝突
+                isShadow: true,          // 標記為影子卡片
+                time: overflowTime,      // 顯示計算後的結束時間
+                duration: 0,             // 停留時間設為 0
+                cost: 0,                 // 費用設為 0 (避免重複計算)
+                originalDayIdx: dayIdx - 1,
+                originalId: item.id
+            });
+        }
+    });
+    return shadows;
+  };
+
   const getCurrentList = () => {
-    if (viewMode === 'itinerary') return itineraries[activeDay] || [];
+    if (viewMode === 'itinerary') {
+        const realItems = itineraries[activeDay] || [];
+        // 動態合併真實行程與影子行程
+        const shadowItems = getShadowItems(activeDay, itineraries);
+        return sortItemsByTime([...realItems, ...shadowItems]);
+    }
     if (viewMode === 'expenses') return sortExpensesByRegionAndCategory(expenses); 
     if (checklistTab === 'packing') return packingList;
     if (checklistTab === 'shopping') return shoppingList;
@@ -381,7 +420,11 @@ const TripPlanner = ({
   };
 
   const updateCurrentList = (newList) => {
-    if (viewMode === 'itinerary') setItineraries({ ...itineraries, [activeDay]: newList });
+    if (viewMode === 'itinerary') {
+        // 過濾掉影子卡片，只儲存真實行程
+        const realItemsOnly = newList.filter(item => !item.isShadow);
+        setItineraries({ ...itineraries, [activeDay]: realItemsOnly });
+    }
     else if (viewMode === 'expenses') setExpenses(newList);
     else if (checklistTab === 'packing') setPackingList(newList);
     else if (checklistTab === 'shopping') setShoppingList(newList);
@@ -402,6 +445,9 @@ const TripPlanner = ({
       if (categoryManagerTab === 'itinerary') setItineraryCategories(list); else setExpenseCategories(list);
     } else {
       const list = [...getCurrentList()];
+      // 禁止拖曳影子卡片
+      if (list[dragItem.current]?.isShadow) return;
+      
       const dragContent = list[dragItem.current];
       list.splice(dragItem.current, 1);
       list.splice(dragOverItem.current, 0, dragContent);
@@ -414,12 +460,25 @@ const TripPlanner = ({
   const handleDayDrop = (e, targetDayIdx) => {
     e.preventDefault();
     if (dragItem.current === null || activeDay === targetDayIdx || viewMode !== 'itinerary') return;
-    const currentList = [...itineraries[activeDay]];
+    const currentList = getCurrentList();
     const itemToMove = currentList[dragItem.current];
-    currentList.splice(dragItem.current, 1);
+    
+    // 禁止移動影子卡片
+    if (itemToMove.isShadow) {
+        alert("無法移動延續行程卡片，請回到原始日期修改。");
+        dragItem.current = null;
+        return;
+    }
+
+    const newCurrentList = [...currentList];
+    newCurrentList.splice(dragItem.current, 1);
+    
+    // 只更新真實列表
+    const realItems = newCurrentList.filter(i => !i.isShadow);
+    
     const targetList = [...(itineraries[targetDayIdx] || [])];
     targetList.push(itemToMove);
-    setItineraries({ ...itineraries, [activeDay]: currentList, [targetDayIdx]: targetList });
+    setItineraries({ ...itineraries, [activeDay]: realItems, [targetDayIdx]: targetList });
     dragItem.current = null;
   };
 
@@ -429,9 +488,11 @@ const TripPlanner = ({
     if (viewMode === 'itinerary') {
       const currentList = getCurrentList();
       let defaultTime = '09:00';
-      if (currentList.length > 0) {
-        const lastItem = currentList[currentList.length - 1];
-        const nextMin = timeToMinutes(lastItem.time) + lastItem.duration + 30;
+      // 尋找最後一個非影子的真實項目來計算時間
+      const lastRealItem = [...currentList].reverse().find(i => !i.isShadow);
+      
+      if (lastRealItem) {
+        const nextMin = timeToMinutes(lastRealItem.time) + lastRealItem.duration + 30;
         defaultTime = minutesToTime(nextMin);
       }
       setFormData({ ...baseData, type: itineraryCategories[0]?.id || 'sightseeing', time: defaultTime, duration: 60 });
@@ -444,6 +505,15 @@ const TripPlanner = ({
   };
 
   const openEditModal = (item) => {
+    if (item.isShadow) {
+        // 如果點擊影子卡片，提示使用者
+        if (window.confirm("這是從前一天延續的行程，是否回到前一天進行編輯？")) {
+            setActiveDay(item.originalDayIdx);
+            // 可以在這裡做一些 highlight 的邏輯，暫時先切換日期
+        }
+        return;
+    }
+
     setEditingItem(item);
     let displayCost = item.cost;
     let currentCostType = item.costType || 'FOREIGN';
@@ -502,6 +572,8 @@ const TripPlanner = ({
     if (viewMode === 'itinerary') newItem.duration = parseInt(formData.duration) || 0;
     
     let list = viewMode === 'expenses' ? [...expenses] : [...getCurrentList()];
+    // 確保只操作真實項目，排除影子項目
+    list = list.filter(i => !i.isShadow);
     
     if (editingItem) {
         list = list.map(item => item.id === editingItem.id ? { ...newItem, completed: item.completed } : item);
@@ -511,38 +583,7 @@ const TripPlanner = ({
     
     if (viewMode === 'itinerary') {
         list = sortItemsByTime(list);
-
-        // --- 專家優化：跨日行程自動處理 ---
-        const startMinutes = timeToMinutes(newItem.time);
-        const endMinutes = startMinutes + newItem.duration;
-        
-        // 檢查是否跨日 (超過 24 小時/1440 分鐘)
-        if (endMinutes >= 1440) {
-            const nextDayIdx = activeDay + 1;
-            
-            // 確保還有下一天，才能新增卡片
-            if (nextDayIdx < tripSettings.days) {
-                const nextDayTime = minutesToTime(endMinutes); // Helper 會自動處理 mod 1440
-                
-                const nextDayItem = {
-                    ...newItem,
-                    id: Date.now() + Math.floor(Math.random() * 1000), // 產生新的唯一 ID
-                    time: nextDayTime,
-                    duration: 0, // 停留時間設為 0
-                    cost: 0, // 費用歸零避免重複計算
-                    image: newItem.image ? { ...newItem.image } : null // 複製照片連結
-                };
-
-                // 手動更新 itineraries 狀態以包含當前頁面與下一頁的變更
-                setItineraries(prev => ({
-                    ...prev,
-                    [activeDay]: list,
-                    [nextDayIdx]: sortItemsByTime([...(prev[nextDayIdx] || []), nextDayItem])
-                }));
-                setIsModalOpen(false);
-                return; // 跳過預設的 updateCurrentList，因為已經手動處理了
-            }
-        }
+        // 移除先前的自動寫入下一日邏輯，改由 getShadowItems 動態計算
     }
     
     if (viewMode === 'expenses') setExpenses(list); else updateCurrentList(list);
@@ -553,6 +594,11 @@ const TripPlanner = ({
       // 1. Find item to delete
       const sourceList = viewMode === 'expenses' ? expenses : getCurrentList();
       const itemToDelete = sourceList.find(i => i.id === id);
+
+      if (itemToDelete?.isShadow) {
+          alert("這是自動生成的延續行程，無法直接刪除。請回到前一天的原始行程進行刪除。");
+          return;
+      }
 
       // 2. Optimistic UI delete
       if (viewMode === 'expenses') setExpenses(expenses.filter(item => item.id !== id)); 
@@ -999,30 +1045,86 @@ const TripPlanner = ({
                 const Icon = getIconComponent(categoryDef.icon);
                 const endTimeStr = minutesToTime(timeToMinutes(item.time) + item.duration);
                 let gapComp = null;
+                
+                // 排除影子卡片參與 gap 計算 (只針對真實行程計算間距)
+                // 這裡我們取下一個 "真實" 項目或影子項目皆可，視需求而定
+                // 但為了簡單起見，我們計算視覺上的間距
                 if (index < getCurrentList().length - 1) {
                   const nextItem = getCurrentList()[index + 1];
                   const diff = timeToMinutes(nextItem.time) - (timeToMinutes(item.time) + item.duration);
-                  if (diff !== 0) { gapComp = (<div className="pl-[4.5rem] py-3 flex items-center select-none"><div className={`text-[10px] px-3 py-0.5 rounded-full border flex items-center gap-1.5 font-medium ${diff < 0 ? `${theme.danger} ${theme.dangerBg} border-[#FFD6D6]` : `${theme.subText} ${theme.hover} ${theme.border}`}`}><span className="opacity-50">▼</span> {diff < 0 ? '時間重疊' : `移動: ${formatDurationDisplay(diff)}`}</div></div>); }
+                  
+                  // 如果是影子卡片，不顯示移動時間 (因為 duration 為 0，且通常接在最前面)
+                  if (diff !== 0 && !item.isShadow && !nextItem.isShadow) { 
+                      gapComp = (<div className="pl-[4.5rem] py-3 flex items-center select-none"><div className={`text-[10px] px-3 py-0.5 rounded-full border flex items-center gap-1.5 font-medium ${diff < 0 ? `${theme.danger} ${theme.dangerBg} border-[#FFD6D6]` : `${theme.subText} ${theme.hover} ${theme.border}`}`}><span className="opacity-50">▼</span> {diff < 0 ? '時間重疊' : `移動: ${formatDurationDisplay(diff)}`}</div></div>); 
+                  }
                 }
+
+                // --- Shadow Card Style ---
+                const isShadow = item.isShadow;
+                const cardStyle = isShadow 
+                    ? `bg-orange-50/50 border-l-4 border-orange-300 shadow-sm opacity-90` // 影子樣式
+                    : `${theme.card} border ${theme.border} shadow-[0_2px_10px_-6px_rgba(0,0,0,0.05)] hover:shadow-md hover:border-[#D6D2C4] hover:translate-x-0.5`; // 正常樣式
+
                 return (
                   <React.Fragment key={item.id}>
-                    <div className="draggable-item group relative flex items-start gap-4 py-2" draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd} onDragOver={(e) => e.preventDefault()}>
-                      <div className="w-[3.5rem] text-right pt-2 shrink-0 select-none"><div className="text-xl font-bold text-[#3A3A3A] font-serif tracking-tight leading-none">{item.time}</div><div className="text-[10px] text-[#999999] font-medium mt-1">{endTimeStr}</div></div>
-                      <div className="relative pt-2 shrink-0 flex justify-center w-8"><div className={`w-3 h-3 rounded-full border-2 ${theme.border} shadow-sm z-10 ${theme.primaryBg}`}></div></div>
+                    <div className="draggable-item group relative flex items-start gap-4 py-2" draggable={!isShadow} onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd} onDragOver={(e) => e.preventDefault()}>
+                      <div className="w-[3.5rem] text-right pt-2 shrink-0 select-none">
+                          <div className={`text-xl font-bold font-serif tracking-tight leading-none ${isShadow ? 'text-orange-400' : 'text-[#3A3A3A]'}`}>{item.time}</div>
+                          <div className="text-[10px] text-[#999999] font-medium mt-1">{endTimeStr}</div>
+                      </div>
+                      <div className="relative pt-2 shrink-0 flex justify-center w-8">
+                          <div className={`w-3 h-3 rounded-full border-2 shadow-sm z-10 ${isShadow ? 'border-orange-300 bg-orange-100' : `${theme.border} ${theme.primaryBg}`}`}></div>
+                      </div>
                       <div className="flex-1 min-w-0 group/card">
-                        <div className={`${theme.card} rounded-lg p-5 border ${theme.border} shadow-[0_2px_10px_-6px_rgba(0,0,0,0.05)] transition-all hover:shadow-md hover:border-[#D6D2C4] hover:translate-x-0.5 relative`}>
-                          <div className="absolute left-2 top-1/2 -translate-y-1/2 text-[#E0E0E0] opacity-0 group-hover/card:opacity-100 cursor-grab active:cursor-grabbing p-1"><GripVertical size={14} /></div>
+                        <div className={`rounded-lg p-5 transition-all relative ${cardStyle}`}>
+                          {!isShadow && <div className="absolute left-2 top-1/2 -translate-y-1/2 text-[#E0E0E0] opacity-0 group-hover/card:opacity-100 cursor-grab active:cursor-grabbing p-1"><GripVertical size={14} /></div>}
+                          
                           <div className="flex justify-between items-start mb-2 pl-2">
-                            <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-full flex items-center justify-center ${categoryDef.color || theme.hover} ${theme.primary} shrink-0`}><Icon size={20} strokeWidth={1.5} /></div><span className="text-xs font-bold tracking-widest text-[#999999] uppercase border border-[#EBE9E4] px-1.5 py-0.5 rounded-sm">{categoryDef.label}</span></div>
-                            <div className="flex gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity"><button onClick={() => updateCurrentList([...getCurrentList(), {...item, id: Date.now(), title: `${item.title} (Copy)`}])} className={`p-1.5 text-[#999999] hover:${theme.primary} ${theme.hover} rounded`}><Copy size={14} /></button><button onClick={() => openEditModal(item)} className={`p-1.5 text-[#999999] hover:${theme.primary} ${theme.hover} rounded`}><Edit3 size={14} /></button><button onClick={() => handleDeleteItem(item.id)} className={`p-1.5 text-[#999999] hover:${theme.danger} hover:${theme.dangerBg} rounded`}><Trash2 size={14} /></button></div>
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isShadow ? 'bg-orange-100 text-orange-500' : `${categoryDef.color || theme.hover} ${theme.primary}`}`}>
+                                    {isShadow ? <ArrowDownCircle size={20} /> : <Icon size={20} strokeWidth={1.5} />}
+                                </div>
+                                <span className={`text-xs font-bold tracking-widest uppercase border px-1.5 py-0.5 rounded-sm ${isShadow ? 'text-orange-400 border-orange-200' : 'text-[#999999] border-[#EBE9E4]'}`}>
+                                    {isShadow ? `Day ${item.originalDayIdx + 1} 延續` : categoryDef.label}
+                                </span>
+                            </div>
+                            
+                            {/* Actions: Hide for Shadow Cards */}
+                            {!isShadow && (
+                                <div className="flex gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                                    <button onClick={() => updateCurrentList([...getCurrentList(), {...item, id: Date.now(), title: `${item.title} (Copy)`}])} className={`p-1.5 text-[#999999] hover:${theme.primary} ${theme.hover} rounded`}><Copy size={14} /></button>
+                                    <button onClick={() => openEditModal(item)} className={`p-1.5 text-[#999999] hover:${theme.primary} ${theme.hover} rounded`}><Edit3 size={14} /></button>
+                                    <button onClick={() => handleDeleteItem(item.id)} className={`p-1.5 text-[#999999] hover:${theme.danger} hover:${theme.dangerBg} rounded`}><Trash2 size={14} /></button>
+                                </div>
+                            )}
+                            {isShadow && (
+                                <button onClick={() => openEditModal(item)} className="text-[10px] text-orange-400 hover:underline px-2 py-1 bg-orange-50 rounded">
+                                    查看來源
+                                </button>
+                            )}
                           </div>
+                          
                           <div className="pl-2">
                             <div className="flex justify-between items-start gap-2 mb-2">
-                                <div className="flex-1"><h3 className="text-xl font-bold text-[#3A3A3A] font-serif leading-tight flex items-center flex-wrap gap-2"><span>{item.title}</span>{item.image && <a href={item.image.link} target="_blank" className="text-[#888] hover:text-[#5F6F52] transition-colors" title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}<button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.title, item.id + '_title'); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder} opacity-0 group-hover/card:opacity-100 transition-opacity shrink-0`} title="複製標題">{copiedId === (item.id + '_title') ? <Check size={12} className={theme.primary} /> : <Copy size={12} />}</button>{item.website && <a href={item.website} target="_blank" rel="noreferrer" className={`text-[#888] hover:${theme.accent}`} onClick={e => e.stopPropagation()}><Globe size={14} /></a>}</h3></div>
-                                {item.cost > 0 && (<div className="text-right shrink-0"><div className={`text-sm font-serif font-bold ${theme.accent} flex items-center justify-end gap-1`}><Coins size={12} />{currencySettings.selectedCountry.symbol} {formatMoney(item.cost)}</div></div>)}
+                                <div className="flex-1">
+                                    <h3 className={`text-xl font-bold font-serif leading-tight flex items-center flex-wrap gap-2 ${isShadow ? 'text-slate-600' : 'text-[#3A3A3A]'}`}>
+                                        <span>{item.title}</span>
+                                        {item.image && !isShadow && <a href={item.image.link} target="_blank" className="text-[#888] hover:text-[#5F6F52] transition-colors" title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}
+                                        {!isShadow && <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.title, item.id + '_title'); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder} opacity-0 group-hover/card:opacity-100 transition-opacity shrink-0`} title="複製標題">{copiedId === (item.id + '_title') ? <Check size={12} className={theme.primary} /> : <Copy size={12} />}</button>}
+                                        {item.website && !isShadow && <a href={item.website} target="_blank" rel="noreferrer" className={`text-[#888] hover:${theme.accent}`} onClick={e => e.stopPropagation()}><Globe size={14} /></a>}
+                                    </h3>
+                                </div>
+                                {item.cost > 0 && !isShadow && (<div className="text-right shrink-0"><div className={`text-sm font-serif font-bold ${theme.accent} flex items-center justify-end gap-1`}><Coins size={12} />{currencySettings.selectedCountry.symbol} {formatMoney(item.cost)}</div></div>)}
                             </div>
-                            <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-[#666666]">{item.location && (<div className={`flex items-center gap-1 group/location -ml-1.5 px-1.5 py-0.5 rounded ${theme.hover} transition-colors`}><MapPin size={12} className={theme.accent} /><span>{item.location}</span><div className="flex gap-2 ml-1 opacity-0 group-hover/location:opacity-100 transition-opacity"><button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.location, item.id); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder}`}>{copiedId === item.id ? <Check size={14} className={theme.primary} /> : <Copy size={14} />}</button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.location)}`} target="_blank" rel="noreferrer" className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder}`} onClick={(e) => e.stopPropagation()}><Navigation size={14} /></a></div></div>)}<div className="flex items-center gap-1 px-1.5 py-0.5"><Clock size={12} className={theme.accent} /> 停留: {formatDurationDisplay(item.duration)}</div></div>
-                            {item.notes && <div className={`mt-3 pt-3 border-t ${theme.border} flex gap-2 items-start`}><PenTool size={10} className="mt-0.5 text-[#AAA] shrink-0" /><p className="text-xs text-[#777] leading-relaxed font-serif italic whitespace-pre-wrap">{item.notes}</p></div>}
+                            
+                            {!isShadow && (
+                                <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-[#666666]">
+                                    {item.location && (<div className={`flex items-center gap-1 group/location -ml-1.5 px-1.5 py-0.5 rounded ${theme.hover} transition-colors`}><MapPin size={12} className={theme.accent} /><span>{item.location}</span><div className="flex gap-2 ml-1 opacity-0 group-hover/location:opacity-100 transition-opacity"><button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.location, item.id); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder}`}>{copiedId === item.id ? <Check size={14} className={theme.primary} /> : <Copy size={14} />}</button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.location)}`} target="_blank" rel="noreferrer" className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder}`} onClick={(e) => e.stopPropagation()}><Navigation size={14} /></a></div></div>)}
+                                    <div className="flex items-center gap-1 px-1.5 py-0.5"><Clock size={12} className={theme.accent} /> 停留: {formatDurationDisplay(item.duration)}</div>
+                                </div>
+                            )}
+                            
+                            {item.notes && !isShadow && <div className={`mt-3 pt-3 border-t ${theme.border} flex gap-2 items-start`}><PenTool size={10} className="mt-0.5 text-[#AAA] shrink-0" /><p className="text-xs text-[#777] leading-relaxed font-serif italic whitespace-pre-wrap">{item.notes}</p></div>}
                           </div>
                         </div>
                       </div>
