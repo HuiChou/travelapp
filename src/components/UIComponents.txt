@@ -1,25 +1,51 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Users, User, ChevronDown, Map as MapIcon, List, Plus, Wallet, 
-  PieChart, Filter, Check, Calendar 
-} from 'lucide-react';
-import { getAvatarColor } from '../utils/helpers';
-import { getIconComponent } from '../utils/constants';
+import { Users, User, ChevronDown, Map as MapIcon, List, Plus, Wallet, PieChart, Filter, Check, Calendar, Star, Utensils, Bus, ShoppingBag, Plane, Coffee, Home, Music } from 'lucide-react';
 
-// --- 人員頭像元件 (PayerAvatar) ---
+// --- 內部補丁 (Fixing missing utils) ---
+// 由於原始 utils 檔案遺失，這裡補上必要的工具函式以確保程式碼可運行
+
+const AVATAR_COLORS = [
+  'bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-yellow-500', 
+  'bg-lime-500', 'bg-green-500', 'bg-emerald-500', 'bg-teal-500',
+  'bg-cyan-500', 'bg-sky-500', 'bg-blue-500', 'bg-indigo-500',
+  'bg-violet-500', 'bg-purple-500', 'bg-fuchsia-500', 'bg-pink-500',
+  'bg-rose-500'
+];
+
+const getAvatarColor = (idx) => {
+  if (idx === 99) return 'bg-gray-400';
+  return AVATAR_COLORS[idx % AVATAR_COLORS.length];
+};
+
+const ICON_MAP = {
+  'Star': Star,
+  'Utensils': Utensils,
+  'Bus': Bus,
+  'ShoppingBag': ShoppingBag,
+  'Plane': Plane,
+  'Coffee': Coffee,
+  'Home': Home,
+  'Music': Music,
+  'Wallet': Wallet
+};
+
+const getIconComponent = (iconName) => {
+  return ICON_MAP[iconName] || Star;
+};
+
+// --- 元件實作 ---
+
 export const PayerAvatar = ({ name, companions, theme, size = "w-4 h-4" }) => {
   let idx = companions ? companions.indexOf(name) : -1;
   if (idx === -1) idx = 99;
   
   return (
-    // 優化：移除 theme.primary，統一使用 text-[#3A3A3A] 深灰色文字，避免與主題色混淆
-    <div className={`${size} rounded-full ${getAvatarColor(idx)} flex items-center justify-center text-[#3A3A3A] text-[8px] font-bold font-serif shrink-0 border border-white shadow-sm`}>
+    <div className={`${size} rounded-full ${getAvatarColor(idx)} flex items-center justify-center text-white text-[8px] font-bold font-serif shrink-0 border border-white shadow-sm`}>
       {name ? name.charAt(0) : '?'}
     </div>
   );
 };
 
-// --- 人員選擇下拉元件 (AvatarSelect) ---
 export const AvatarSelect = ({ value, options, onChange, theme, companions, disabled }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
@@ -41,16 +67,13 @@ export const AvatarSelect = ({ value, options, onChange, theme, companions, disa
   };
 
   const renderAvatar = (val, size = "w-6 h-6", fontSize = "text-xs") => {
-    // 特殊選項維持原樣 (高對比色)
     if (val === 'ALL') return <div className={`${size} rounded-full bg-[#3A3A3A] text-white flex items-center justify-center ${fontSize}`}><Users size={12} /></div>;
     if (val === 'EACH') return <div className={`${size} rounded-full bg-[#A98467] text-white flex items-center justify-center ${fontSize}`}><User size={12} /></div>;
     
     let idx = companions ? companions.indexOf(val) : -1;
     if (idx === -1) idx = 99;
-    
     return (
-      // 優化：一般人員統一使用 text-[#3A3A3A]
-      <div className={`${size} rounded-full ${getAvatarColor(idx)} border border-white flex items-center justify-center text-[#3A3A3A] ${fontSize} font-bold shadow-sm`}>
+      <div className={`${size} rounded-full ${getAvatarColor(idx)} border border-white flex items-center justify-center text-white ${fontSize} font-bold shadow-sm`}>
         {val ? val.charAt(0).toUpperCase() : '?'}
       </div>
     );
@@ -62,7 +85,7 @@ export const AvatarSelect = ({ value, options, onChange, theme, companions, disa
         type="button"
         disabled={disabled}
         onClick={() => !disabled && setIsOpen(!isOpen)} 
-        className={`w-full flex items-center gap-2 pl-2 pr-2 py-1.5 bg-white border-b ${theme.border} ${!disabled ? `hover:${theme.primaryBorder}` : ''} transition-all`}
+        className={`w-full flex items-center gap-2 pl-2 pr-2 py-1.5 bg-white border-b ${theme.border} ${!disabled ? `hover:border-${theme.primary}` : ''} transition-all`}
       >
         {renderAvatar(value)}
         <span className="flex-1 text-left text-sm font-bold text-[#3A3A3A] truncate">{getLabel(value)}</span>
@@ -88,7 +111,6 @@ export const AvatarSelect = ({ value, options, onChange, theme, companions, disa
   );
 };
 
-// --- 類別選擇下拉元件 (CategorySelect) ---
 export const CategorySelect = ({ value, options, onChange, theme, variant = 'default' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
@@ -107,7 +129,7 @@ export const CategorySelect = ({ value, options, onChange, theme, variant = 'def
   const isAll = value === 'all';
   const SelectedIcon = isAll ? Filter : getIconComponent(selectedCat?.icon || 'Star');
 
-  // ghost 模式：用於複合式篩選列，無邊框、背景透明
+  // ghost: 無邊框、背景透明 (用於複合式篩選列)
   const buttonClass = variant === 'ghost'
     ? `w-full h-full flex items-center gap-2 px-3 py-2 bg-transparent hover:bg-black/5 transition-all outline-none rounded-r-xl`
     : `w-full flex items-center gap-2 px-3 py-2 bg-white border ${theme.border} rounded-lg hover:border-[#A98467] transition-all shadow-sm`;
@@ -139,7 +161,7 @@ export const CategorySelect = ({ value, options, onChange, theme, variant = 'def
             >
               <div className="w-6 h-6 rounded bg-[#EBE9E4] text-[#888] flex items-center justify-center shrink-0"><Filter size={14} /></div>
               <span className="text-sm font-bold text-[#3A3A3A] flex-1 text-left">所有類別</span>
-              {value === 'all' && <Check size={14} className={theme.primary} />}
+              {value === 'all' && <Check size={14} className="text-[#A98467]" />}
             </button>
             {options.map(cat => {
                 const CatIcon = getIconComponent(cat.icon);
@@ -154,7 +176,7 @@ export const CategorySelect = ({ value, options, onChange, theme, variant = 'def
                             <CatIcon size={14} />
                         </div>
                         <span className="text-sm font-bold text-[#3A3A3A] flex-1 text-left">{cat.label}</span>
-                        {value === cat.id && <Check size={14} className={theme.primary} />}
+                        {value === cat.id && <Check size={14} className="text-[#A98467]" />}
                     </button>
                 )
             })}
@@ -164,7 +186,8 @@ export const CategorySelect = ({ value, options, onChange, theme, variant = 'def
   );
 };
 
-// --- 複合式篩選器 (Date | Category) ---
+// --- NEW: 複合式篩選器 (Date | Category) ---
+// 專家優化：將日期與類別整合在一個膠囊容器中，中間使用垂直線區隔
 export const CompositeFilter = ({ dateValue, onDateChange, dateOptions, categoryValue, onCategoryChange, categoryOptions, theme }) => {
   return (
     <div className={`flex items-center bg-white border ${theme.border} rounded-xl shadow-sm hover:shadow-md transition-shadow h-10`}>
@@ -198,7 +221,6 @@ export const CompositeFilter = ({ dateValue, onDateChange, dateOptions, category
   );
 };
 
-// --- 底部導航列 (BottomNav) ---
 export const BottomNav = ({ theme, viewMode, setViewMode, openAddModal }) => (
   <div className={`fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-[#EAEAEA] pb-safe pt-2 px-4 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]`}>
      <div className="grid grid-cols-5 items-center h-14 pb-1">
@@ -228,5 +250,3 @@ export const BottomNav = ({ theme, viewMode, setViewMode, openAddModal }) => (
      </div>
   </div>
 );
-
-
