@@ -9,7 +9,7 @@ import {
   Ticket, Bus, Car, Ship, Music, Gamepad2, Gift, Shirt, Briefcase, 
   Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
   Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2, RefreshCw, Printer,
-  Calendar, Tag, ChevronDown, Divide, Filter
+  Calendar, Tag, ChevronDown, Divide, Filter, FileSpreadsheet
 } from 'lucide-react';
 
 import { 
@@ -39,7 +39,7 @@ const TripPlanner = ({
   
   const DEFAULT_CURRENCY_SETTINGS = { selectedCountry: COUNTRY_OPTIONS[0], exchangeRate: COUNTRY_OPTIONS[0].defaultRate };
   
-  // 初始化 State
+  // Ensure we always have valid objects even if projectData has missing fields
   const [tripSettings, setTripSettings] = useState(projectData?.tripSettings || generateNewProjectData('Temp').tripSettings);
   const [companions, setCompanions] = useState(Array.isArray(projectData?.companions) ? projectData.companions : ['Me']);
   const [currencySettings, setCurrencySettings] = useState(projectData?.currencySettings?.selectedCountry ? projectData.currencySettings : DEFAULT_CURRENCY_SETTINGS);
@@ -56,7 +56,7 @@ const TripPlanner = ({
   const [itineraryCategories, setItineraryCategories] = useState(projectData?.categories?.itinerary || DEFAULT_ITINERARY_CATEGORIES);
   const [expenseCategories, setExpenseCategories] = useState(projectData?.categories?.expense || DEFAULT_EXPENSE_CATEGORIES);
   
-  // Google Drive File ID
+  // Track Google Drive File ID locally for this session
   const [googleDriveFileId, setGoogleDriveFileId] = useState(projectData?.googleDriveFileId || null);
 
   const [isXlsxLoaded, setIsXlsxLoaded] = useState(false);
@@ -64,6 +64,12 @@ const TripPlanner = ({
   const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
+
+  // Cloud Load State
+  const [cloudFiles, setCloudFiles] = useState([]);
+  const [isCloudLoadModalOpen, setIsCloudLoadModalOpen] = useState(false);
+  const [isLoadingCloudList, setIsLoadingCloudList] = useState(false);
+  const [isProcessingCloudFile, setIsProcessingCloudFile] = useState(false);
 
   useEffect(() => {
     if (window.XLSX) {
@@ -78,12 +84,269 @@ const TripPlanner = ({
     return () => {}
   }, []);
 
+  // --- Auto Fetch Cloud Files on Login ---
+  useEffect(() => {
+    if (googleUser && gapiInited) {
+        fetchCloudFiles();
+    }
+  }, [googleUser, gapiInited]);
+
+  const fetchCloudFiles = async () => {
+      setIsLoadingCloudList(true);
+      try {
+          // Query for spreadsheets starting with 'TravelApp_' and not in trash
+          const q = "name contains 'TravelApp_' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false";
+          const response = await window.gapi.client.drive.files.list({
+              q: q,
+              fields: 'files(id, name, modifiedTime)',
+              orderBy: 'modifiedTime desc',
+              pageSize: 20
+          });
+          
+          const files = response.result.files;
+          setCloudFiles(files);
+          
+          // If files found and we are on a "fresh" project (or just logged in), open the modal
+          // We check if it's a temp title to decide whether to prompt
+          if (files && files.length > 0) {
+             if (tripSettings.title === 'Temp' || tripSettings.title === 'My Trip') {
+                 setIsCloudLoadModalOpen(true);
+             }
+          }
+      } catch (error) {
+          console.error("Error fetching cloud files:", error);
+      } finally {
+          setIsLoadingCloudList(false);
+      }
+  };
+
+  const loadFromGoogleSheet = async (fileId, fileName) => {
+      setIsProcessingCloudFile(true);
+      try {
+        // 1. Batch Get all necessary ranges
+        const ranges = [
+            "專案概覽!A:B", 
+            "行程表!A:H", 
+            "費用!A:H", 
+            "管理類別!A:E", 
+            "行李!A:B", 
+            "購物!A:F", 
+            "美食!A:F", 
+            "景點!A:F"
+        ];
+        
+        const response = await window.gapi.client.sheets.spreadsheets.values.batchGet({
+            spreadsheetId: fileId,
+            ranges: ranges,
+            valueRenderOption: 'FORMATTED_VALUE' // Get strings for dates etc
+        });
+
+        const valueRanges = response.result.valueRanges;
+        
+        const getSheetData = (rangeName) => {
+            const range = valueRanges.find(r => r.range.includes(rangeName));
+            return range ? range.values : [];
+        };
+
+        // --- Parse Overview ---
+        const overviewData = getSheetData("專案概覽") || [];
+        // Map rows to object based on first column key
+        const ovMap = {};
+        overviewData.forEach(row => { if(row[0]) ovMap[row[0]] = row[1]; });
+        
+        const title = ovMap["專案標題"] || fileName.replace('TravelApp_', '').replace('.xlsx', '');
+        const startDate = ovMap["出發日期"] || new Date().toISOString().split('T')[0];
+        const endDate = ovMap["回國日期"] || getNextDay(startDate);
+        const days = calculateDaysDiff(startDate, endDate);
+        
+        const companionsStr = ovMap["旅行人員"] || "Me";
+        const newCompanions = companionsStr.split(",").map(s => s.trim()).filter(s => s);
+        
+        // Find Currency
+        const countryName = ovMap["旅行國家"];
+        const currencyCode = ovMap["貨幣代碼"];
+        const exchangeRate = parseFloat(ovMap["匯率 (1外幣 = TWD)"]) || 1;
+        const selectedCountry = COUNTRY_OPTIONS.find(c => c.name === countryName || c.currency === currencyCode) || COUNTRY_OPTIONS[0];
+
+        // --- Parse Categories ---
+        const catData = getSheetData("管理類別") || [];
+        // Header: [類型, ID, 名稱, 圖示, 顏色]
+        const newItinCats = [];
+        const newExpCats = [];
+        
+        if (catData.length > 1) {
+            // Skip header row 0
+            for(let i=1; i<catData.length; i++) {
+                const row = catData[i];
+                if (!row || row.length === 0) continue;
+                const item = {
+                    id: row[1] ? String(row[1]) : `cat_${Date.now()}_${Math.random()}`,
+                    label: row[2] || "未命名",
+                    icon: ICON_REGISTRY[row[3]] ? row[3] : 'Star',
+                    color: row[4] || ''
+                };
+                if (row[0] === "行程") {
+                    if (!item.color) item.color = 'bg-[#F2F4F1]';
+                    newItinCats.push(item);
+                } else if (row[0] === "費用") {
+                    newExpCats.push(item);
+                }
+            }
+        }
+        
+        // Use defaults if empty, otherwise update
+        let currentItinCats = newItinCats.length > 0 ? newItinCats : DEFAULT_ITINERARY_CATEGORIES;
+        let currentExpCats = newExpCats.length > 0 ? newExpCats : DEFAULT_EXPENSE_CATEGORIES;
+
+        // Maps for ID lookup
+        const itinLabelToId = {};
+        currentItinCats.forEach(c => itinLabelToId[c.label] = c.id);
+        const expLabelToId = {};
+        currentExpCats.forEach(c => expLabelToId[c.label] = c.id);
+
+        // --- Parse Itinerary ---
+        const itinData = getSheetData("行程表") || [];
+        const newItineraries = {};
+        if (itinData.length > 1) {
+            const headers = itinData[0]; // Day, Time, Duration, Type, Title, Location, Cost, Notes
+            for (let i=1; i<itinData.length; i++) {
+                const row = itinData[i];
+                if (!row[0]) continue;
+                const dayStr = row[0] || "Day 1";
+                const dayIndex = parseInt(dayStr.replace("Day ", "")) - 1;
+                if (dayIndex < 0 || isNaN(dayIndex)) continue;
+                
+                if (!newItineraries[dayIndex]) newItineraries[dayIndex] = [];
+                
+                const typeLabel = row[3];
+                const typeId = itinLabelToId[typeLabel] || currentItinCats[0].id;
+
+                newItineraries[dayIndex].push({
+                    id: Date.now() + Math.random() + i,
+                    type: typeId,
+                    title: row[4] || "未命名",
+                    time: row[1] || "09:00",
+                    duration: parseInt(row[2]) || 60,
+                    location: row[5] || "",
+                    cost: parseFloat(row[6]) || 0,
+                    notes: row[7] || ""
+                });
+            }
+        }
+
+        // --- Parse Expenses ---
+        const expenseData = getSheetData("費用") || [];
+        const newExpenses = [];
+        if (expenseData.length > 1) {
+             // Header: Date, Region, Category, Title, Location, Payer, Cost, Split Details
+             for (let i=1; i<expenseData.length; i++) {
+                const row = expenseData[i];
+                if (!row[0]) continue; // Skip empty rows
+
+                const catLabel = row[2];
+                const catId = expLabelToId[catLabel] || currentExpCats[0].id;
+                const payer = row[5] || "Me";
+                const cost = parseFloat(row[6] && typeof row[6] === 'string' ? row[6].replace(/,/g,'') : row[6]) || 0;
+                
+                // Parse split details string
+                const splitStr = row[7] || "";
+                let shares = [payer];
+                let details = [];
+
+                if (splitStr.includes("分攤:")) {
+                    const sharesPart = splitStr.replace("分攤:", "").trim();
+                    shares = sharesPart.split(",").map(s => s.trim());
+                    const shareAmount = Math.round(cost / shares.length);
+                    details = shares.map((s, idx) => ({ id: Date.now() + idx + Math.random(), payer: payer, target: s, amount: shareAmount }));
+                } else {
+                     shares = [payer]; 
+                     const parts = splitStr.split(",").map(s => s.trim());
+                     if (parts.length > 0 && parts[0].includes(":")) {
+                         shares = [];
+                         details = parts.map((p, idx) => {
+                             const [name, amt] = p.split(":").map(x => x.trim());
+                             const targetName = name === '全員' ? 'ALL' : name;
+                             if (!shares.includes(targetName)) shares.push(targetName);
+                             return { id: Date.now() + idx + Math.random(), payer: payer, target: targetName, amount: parseFloat(amt) || 0 }
+                         });
+                     }
+                }
+
+                newExpenses.push({
+                    id: Date.now() + Math.random() + i,
+                    date: row[0], // Assuming YYYY-MM-DD
+                    region: row[1] || "",
+                    category: catId,
+                    title: row[3] || "未命名",
+                    location: row[4] || "",
+                    payer: payer,
+                    cost: cost,
+                    currency: currencyCode,
+                    shares: shares,
+                    details: details
+                });
+             }
+        }
+
+        // --- Parse Checklists ---
+        const parseSimpleList = (sheetName, mapFn) => {
+            const data = getSheetData(sheetName) || [];
+            if (data.length <= 1) return [];
+            // Skip header
+            return data.slice(1).map(mapFn).filter(item => item !== null);
+        };
+
+        const newPacking = parseSimpleList("行李", (row, i) => 
+            row[0] ? { id: Date.now() + i, title: row[0], completed: row[1] === "已完成" } : null
+        );
+        
+        const newShopping = parseSimpleList("購物", (row, i) => 
+             row[1] ? { id: Date.now() + i, region: row[0]||"", title: row[1], location: row[2]||"", cost: parseFloat(row[3])||0, completed: row[4]==="已購買", notes: row[5]||"" } : null
+        );
+
+        const newFood = parseSimpleList("美食", (row, i) => 
+             row[1] ? { id: Date.now() + i, region: row[0]||"", title: row[1], location: row[2]||"", cost: parseFloat(row[3])||0, completed: row[4]==="已吃", notes: row[5]||"" } : null
+        );
+
+        const newSightseeing = parseSimpleList("景點", (row, i) => 
+             row[1] ? { id: Date.now() + i, region: row[0]||"", title: row[1], location: row[2]||"", cost: parseFloat(row[3])||0, completed: row[4]==="已去", notes: row[5]||"" } : null
+        );
+
+        // --- Batch Update State ---
+        setTripSettings({ title, startDate, endDate, days });
+        setCompanions(newCompanions);
+        setCurrencySettings({ selectedCountry, exchangeRate });
+        if (newItinCats.length > 0) setItineraryCategories(newItinCats);
+        if (newExpCats.length > 0) setExpenseCategories(newExpCats);
+        setItineraries(newItineraries);
+        setExpenses(newExpenses);
+        setPackingList(newPacking);
+        setShoppingList(newShopping);
+        setFoodList(newFood);
+        setSightseeingList(newSightseeing);
+        setGoogleDriveFileId(fileId);
+
+        setIsCloudLoadModalOpen(false);
+        alert(`成功讀取雲端檔案：${title}`);
+
+      } catch (error) {
+          console.error("Parse Cloud File Error:", error);
+          alert("讀取雲端檔案失敗，請確認檔案格式是否正確 (需由本 App 產生的格式)。");
+      } finally {
+          setIsProcessingCloudFile(false);
+      }
+  };
+
+
   // --- Auto Save Logic ---
   useEffect(() => {
+      // Only auto-save if logged in and API is ready
       if (!googleUser || !gapiInited) return;
+
       const timer = setTimeout(() => {
-          handleSaveToGoogleSheet(true); 
-      }, 5000); 
+          handleSaveToGoogleSheet(true); // silent = true
+      }, 5000); // 5 seconds debounce
+
       return () => clearTimeout(timer);
   }, [tripSettings, itineraries, expenses, packingList, shoppingList, foodList, sightseeingList, googleUser, gapiInited, googleDriveFileId]);
 
@@ -92,6 +355,7 @@ const TripPlanner = ({
           if (!isSilent) alert("請先在首頁登入 Google 帳號。");
           return;
       }
+      
       if (!isSilent) setIsSyncing(true);
       else setIsAutoSaving(true);
 
@@ -877,8 +1141,8 @@ const TripPlanner = ({
   };
 
   const handleOpenSettingsModal = () => {
-      // 確保 tripSettings 即使資料有誤也有值
-      setTempSettings(tripSettings || generateNewProjectData('Temp').tripSettings);
+      if (!tripSettings) return;
+      setTempSettings({ ...tripSettings });
       setIsSettingsOpen(true);
   };
 
@@ -985,14 +1249,14 @@ const TripPlanner = ({
        let categoryHeader = null;
        
        if (index === 0 || currentCategory !== prevExp?.category) {
-          const CatIcon = getIconComponent(categoryDef.icon);
-          const categoryTotal = sortedExpenses.filter(e => e.category === currentCategory).reduce((sum, e) => sum + (e.cost || 0), 0);
-          categoryHeader = (
-            <div className={`sticky top-0 z-10 ${theme.bg}/95 backdrop-blur-sm py-2 px-1 mb-2 mt-4 border-b ${theme.border} flex justify-between items-center animate-in fade-in first:mt-0`}>
-              <div className={`text-sm font-bold ${theme.primary} flex items-center gap-2`}><CatIcon size={16} /> {categoryDef.label}</div>
-              <div className="text-right"><div className={`text-xs font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(categoryTotal)}</div></div>
-            </div>
-          );
+         const CatIcon = getIconComponent(categoryDef.icon);
+         const categoryTotal = sortedExpenses.filter(e => e.category === currentCategory).reduce((sum, e) => sum + (e.cost || 0), 0);
+         categoryHeader = (
+           <div className={`sticky top-0 z-10 ${theme.bg}/95 backdrop-blur-sm py-2 px-1 mb-2 mt-4 border-b ${theme.border} flex justify-between items-center animate-in fade-in first:mt-0`}>
+             <div className={`text-sm font-bold ${theme.primary} flex items-center gap-2`}><CatIcon size={16} /> {categoryDef.label}</div>
+             <div className="text-right"><div className={`text-xs font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(categoryTotal)}</div></div>
+           </div>
+         );
        }
        const ItemIcon = getIconComponent(categoryDef.icon);
        return (
@@ -1000,17 +1264,17 @@ const TripPlanner = ({
            {categoryHeader}
            <div className={`${theme.card} p-3 rounded-xl border ${theme.border} flex justify-between items-center shadow-sm`}>
              <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-full ${theme.hover} flex items-center justify-center ${theme.primary} shrink-0`}><ItemIcon size={16} /></div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-[#3A3A3A] font-serif truncate">{exp.title}</div>
-                  <div className="text-[10px] text-[#888] mt-1 flex flex-wrap gap-1 items-center">
-                    {statsMode === 'personal' ? (
-                      <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.realPayer} companions={companions} theme={theme}/><span>{exp.realPayer}</span></span></>
-                    ) : (
-                      <><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>分攤:</span>{exp.details && exp.details.some(d => d.target === 'ALL' || d.target === 'EACH') ? <span className={`${theme.hover} px-1 rounded ${theme.primary}`}>全員</span> : <span>{exp.shares ? exp.shares.length : 0}人</span>}</span></>
-                    )}
-                  </div>
-                </div>
+               <div className={`w-8 h-8 rounded-full ${theme.hover} flex items-center justify-center ${theme.primary} shrink-0`}><ItemIcon size={16} /></div>
+               <div className="flex-1 min-w-0">
+                 <div className="text-sm font-bold text-[#3A3A3A] font-serif truncate">{exp.title}</div>
+                 <div className="text-[10px] text-[#888] mt-1 flex flex-wrap gap-1 items-center">
+                   {statsMode === 'personal' ? (
+                     <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.realPayer} companions={companions} theme={theme}/><span>{exp.realPayer}</span></span></>
+                   ) : (
+                     <><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>分攤:</span>{exp.details && exp.details.some(d => d.target === 'ALL' || d.target === 'EACH') ? <span className={`${theme.hover} px-1 rounded ${theme.primary}`}>全員</span> : <span>{exp.shares ? exp.shares.length : 0}人</span>}</span></>
+                   )}
+                 </div>
+               </div>
              </div>
              <div className="text-right shrink-0"><div className={`text-sm font-bold ${theme.accent} font-serif`}>{exp.currency} {formatMoney(exp.cost)}</div><div className="text-[10px] text-[#999] font-medium">(NT$ {formatMoney(twd)})</div></div>
            </div>
@@ -1028,8 +1292,8 @@ const TripPlanner = ({
             <div className="flex items-start gap-4 flex-1 min-w-0">
                {onBack && (<button onClick={onBack} className={`text-[#888] hover:${theme.primary} transition-colors p-2 -ml-3 rounded-full ${theme.hover} shrink-0`} title="回首頁"><Home size={28} strokeWidth={2.5} /></button>)}
                <div className="min-w-0 flex-1">
-                  <h1 className="text-xl md:text-2xl font-serif font-bold tracking-wide text-[#3A3A3A] flex items-center gap-2 truncate pr-2"><span className="truncate">{tripSettings.title}</span></h1>
-                  <div className={`text-xs font-serif ${theme.subText} mt-1 tracking-widest uppercase pl-1 flex items-center gap-2 truncate`}><span>{tripSettings.startDate.replace(/-/g, '.')}</span><ArrowRight size={12} className="shrink-0" /><span>{tripSettings.endDate.replace(/-/g, '.')}</span><span className={`border-l ${theme.border} pl-2 ml-1 shrink-0`}>{tripSettings.days} 天</span></div>
+                 <h1 className="text-xl md:text-2xl font-serif font-bold tracking-wide text-[#3A3A3A] flex items-center gap-2 truncate pr-2"><span className="truncate">{tripSettings.title}</span></h1>
+                 <div className={`text-xs font-serif ${theme.subText} mt-1 tracking-widest uppercase pl-1 flex items-center gap-2 truncate`}><span>{tripSettings.startDate.replace(/-/g, '.')}</span><ArrowRight size={12} className="shrink-0" /><span>{tripSettings.endDate.replace(/-/g, '.')}</span><span className={`border-l ${theme.border} pl-2 ml-1 shrink-0`}>{tripSettings.days} 天</span></div>
                </div>
             </div>
             <div className="flex gap-2 shrink-0 relative items-center">
@@ -1045,6 +1309,7 @@ const TripPlanner = ({
                     <div className={`absolute right-0 top-full mt-2 w-64 ${theme.card} rounded-xl shadow-xl border ${theme.border} p-2 flex flex-col gap-1 z-50 animate-in fade-in zoom-in-95 duration-200`}>
                       <div className={`px-4 py-2 text-xs font-bold text-[#888] uppercase tracking-wider border-b ${theme.border} mb-1 flex justify-between items-center`}><span>雲端同步 (Google)</span>{googleUser && <span className="text-[10px] text-green-600 flex items-center gap-1"><CheckCircle2 size={10}/> 已登入</span>}</div>
                       <button onClick={() => { handleSaveToGoogleSheet(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 text-[#3A3A3A]`} disabled={isSyncing}>{isSyncing ? <Loader2 size={16} className="animate-spin text-[#3A3A3A]"/> : <RefreshCw size={16} className={theme.primary}/>} {isSyncing ? "同步中..." : "立即手動同步"}</button>
+                      <button onClick={() => { setIsFileMenuOpen(false); setIsCloudLoadModalOpen(true); fetchCloudFiles(); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 text-[#3A3A3A]`}><CloudDownload size={16} className={theme.primary}/> 讀取雲端檔案</button>
                       <div className={`my-1 border-b ${theme.border}`}></div>
                       <div className="px-4 py-2 text-xs font-bold text-[#888] uppercase tracking-wider">本機檔案</div>
                       <button onClick={() => { fileInputRef.current.click(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 ${!isXlsxLoaded ? 'opacity-50 cursor-not-allowed' : 'text-[#3A3A3A]'}`} disabled={!isXlsxLoaded}>{isXlsxLoaded ? <Upload size={16} /> : <Loader2 size={16} className="animate-spin" />} 匯入 Excel</button>
@@ -1131,9 +1396,9 @@ const TripPlanner = ({
                         onChange={(e) => setStatsDayFilter(e.target.value)} 
                         className={`bg-transparent text-xs font-bold text-[#3A3A3A] focus:outline-none`}
                     >
-                        <option value="all">所有天數</option>
+                        <option value="all">所有日期</option>
                         {Array.from({ length: tripSettings.days }).map((_, idx) => (
-                            <option key={idx} value={idx}>Day {idx + 1}</option>
+                            <option key={idx} value={idx}>{formatDate(tripSettings.startDate, idx).text}</option>
                         ))}
                     </select>
                     <div className="w-px h-4 bg-[#CCC] mx-1"></div>
@@ -1227,8 +1492,8 @@ const TripPlanner = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start mb-2">
                            <h3 className="text-xl font-bold text-[#3A3A3A] font-serif leading-tight pr-2 flex items-center flex-wrap gap-2">
-                              <span>{item.title}</span>
-                              <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.title, item.id + '_title'); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder} opacity-0 group-hover:opacity-100 transition-opacity shrink-0`} title="複製標題">{copiedId === (item.id + '_title') ? <Check size={12} className={theme.primary} /> : <Copy size={12} />}</button>
+                             <span>{item.title}</span>
+                             <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.title, item.id + '_title'); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder} opacity-0 group-hover:opacity-100 transition-opacity shrink-0`} title="複製標題">{copiedId === (item.id + '_title') ? <Check size={12} className={theme.primary} /> : <Copy size={12} />}</button>
                            </h3>
                            <div className="flex gap-2 shrink-0"><button onClick={() => { setEditingItem(item); openEditModal(item); }} className={`text-[#999] hover:${theme.primary} p-1`}><Edit3 size={16}/></button><button onClick={() => handleDeleteItem(item.id)} className={`text-[#999] hover:${theme.danger} p-1`}><Trash2 size={16}/></button></div>
                         </div>
@@ -1319,6 +1584,63 @@ const TripPlanner = ({
           </div>
         </div>
       )}
+
+      {/* Cloud File Load Modal */}
+      {isCloudLoadModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#3A3A3A]/40 backdrop-blur-sm">
+           <div className={`bg-[#FDFCFB] w-full max-w-md rounded-xl shadow-2xl flex flex-col max-h-[80vh] border ${theme.border} animate-in zoom-in-95`}>
+             <div className="p-4 border-b border-[#F0F0F0] flex justify-between items-center bg-white rounded-t-xl">
+                 <h2 className="text-lg font-bold font-serif text-[#3A3A3A] flex items-center gap-2"><CloudDownload size={20}/> 選擇雲端檔案</h2>
+                 <button onClick={() => setIsCloudLoadModalOpen(false)}><X size={20} className="text-[#999] hover:text-[#333]" /></button>
+             </div>
+             <div className="p-2 overflow-y-auto flex-1 bg-[#F9F8F6]">
+                 {isLoadingCloudList ? (
+                     <div className="flex flex-col items-center justify-center py-10 text-[#888] gap-2">
+                         <Loader2 size={30} className="animate-spin text-[#A98467]"/>
+                         <span className="text-sm font-bold">搜尋 Google Drive 中...</span>
+                     </div>
+                 ) : isProcessingCloudFile ? (
+                     <div className="flex flex-col items-center justify-center py-10 text-[#888] gap-2">
+                         <Loader2 size={30} className="animate-spin text-[#5F6F52]"/>
+                         <span className="text-sm font-bold">讀取並解析檔案中...</span>
+                     </div>
+                 ) : cloudFiles.length === 0 ? (
+                     <div className="text-center py-10 text-[#888]">
+                         <FileSpreadsheet size={40} className="mx-auto mb-2 opacity-20"/>
+                         <p className="text-sm font-bold">找不到以 "TravelApp_" 開頭的檔案</p>
+                         <p className="text-xs mt-1">請先儲存過一次檔案，或檢查雲端垃圾桶。</p>
+                     </div>
+                 ) : (
+                     <div className="space-y-2">
+                         {cloudFiles.map(file => (
+                             <button 
+                                key={file.id}
+                                onClick={() => loadFromGoogleSheet(file.id, file.name)}
+                                className={`w-full text-left p-3 rounded-lg border ${theme.border} bg-white hover:border-[#A98467] hover:shadow-md transition-all group`}
+                             >
+                                 <div className="flex items-center gap-3">
+                                     <div className={`w-10 h-10 rounded-full bg-[#EBE9E4] flex items-center justify-center group-hover:bg-[#A98467] group-hover:text-white transition-colors`}>
+                                         <FileSpreadsheet size={20}/>
+                                     </div>
+                                     <div className="flex-1 min-w-0">
+                                         <div className="font-bold text-[#3A3A3A] truncate text-sm">{file.name}</div>
+                                         <div className="text-[10px] text-[#888] mt-0.5">最後修改: {new Date(file.modifiedTime).toLocaleString()}</div>
+                                     </div>
+                                     <Download size={16} className="text-[#CCC] group-hover:text-[#A98467]"/>
+                                 </div>
+                             </button>
+                         ))}
+                     </div>
+                 )}
+             </div>
+             <div className="p-3 border-t border-[#F0F0F0] bg-white rounded-b-xl flex justify-between items-center">
+                 <button onClick={fetchCloudFiles} className="text-xs font-bold text-[#A98467] flex items-center gap-1 hover:underline"><RefreshCw size={12}/> 重新整理</button>
+                 <button onClick={() => setIsCloudLoadModalOpen(false)} className="px-4 py-2 text-xs font-bold text-[#888] hover:bg-[#F0F0F0] rounded-lg">關閉</button>
+             </div>
+           </div>
+        </div>
+      )}
+
       {/* Modals rendered at the end to ensure they are on top */}
       {isCategoryEditModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
