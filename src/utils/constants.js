@@ -24,7 +24,8 @@ export const getIconComponent = (iconName) => ICON_REGISTRY[iconName] || Camera;
 
 // --- Google API ---
 export const GOOGLE_CLIENT_ID = "456137719976-dp4uin8ae10f332qbhqm447nllr2u4ec.apps.googleusercontent.com";
-export const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file";
+// Modify: Added 'https://www.googleapis.com/auth/drive.readonly' to allow seeing all files, not just created ones.
+export const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly";
 
 // --- Defaults ---
 export const DEFAULT_ITINERARY_CATEGORIES = [

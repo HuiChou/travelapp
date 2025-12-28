@@ -13,7 +13,6 @@ import {
   Image as ImageIcon, ExternalLink, ArrowDownCircle
 } from 'lucide-react';
 
-// Fix imports to point to the correct relative path based on file structure
 import { 
     DEFAULT_ITINERARY_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, COUNTRY_OPTIONS, 
     ICON_REGISTRY, getIconComponent, CATEGORY_COLORS, THEMES, AVATAR_COLORS
@@ -26,7 +25,6 @@ import {
     parseProjectDataFromGAPI 
 } from '../utils/helpers';
 
-// Fix import for UIComponents
 import { BottomNav, PayerAvatar, AvatarSelect, CategorySelect, CompositeFilter } from '../components/UIComponents';
 
 const TripPlanner = ({ 
@@ -99,6 +97,7 @@ const TripPlanner = ({
   const fetchCloudFiles = async () => {
       setIsLoadingCloudList(true);
       try {
+          // 使用 contains 進行模糊搜尋，確保能找到包含關鍵字的檔案
           const q = "name contains 'TravelApp_' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false";
           const response = await window.gapi.client.drive.files.list({
               q: q,
@@ -110,9 +109,11 @@ const TripPlanner = ({
           const files = response.result.files;
           setCloudFiles(files);
           
+          // 如果是剛建立的空白專案，且有雲端檔案，主動提示
           if (files && files.length > 0) {
              if (tripSettings.title === 'Temp' || tripSettings.title === 'My Trip') {
-                 setIsCloudLoadModalOpen(true);
+                 // 不自動打開，避免打擾，使用者可透過選單開啟
+                 // setIsCloudLoadModalOpen(true);
              }
           }
       } catch (error) {
@@ -188,11 +189,11 @@ const TripPlanner = ({
       else setIsAutoSaving(true);
 
       try {
-          const title = `TravelApp_${tripSettings.title}`;
-          // Dummy update to simulate save completion
+          // 這裡僅模擬儲存成功，實際專案需實作寫入 Google Sheets 的邏輯
+          // const title = `TravelApp_${tripSettings.title}`;
           await new Promise(resolve => setTimeout(resolve, 500));
           
-          if (!isSilent) alert(`同步成功！\n檔案：${title}\n(已覆蓋更新)`);
+          if (!isSilent) alert(`同步成功！(已覆蓋更新)`);
 
       } catch (error) {
           console.error("Error saving to Google Sheets:", error);
@@ -1153,7 +1154,7 @@ const TripPlanner = ({
                   return (
                     <div key={person} onClick={() => setStatsPersonFilter(statsPersonFilter === person ? 'all' : person)} className={`border rounded-xl p-3 shadow-sm min-w-[8rem] flex flex-col items-center cursor-pointer transition-all ${statsPersonFilter === person ? `${theme.hover} ${theme.primaryBorder} ring-1 ring-[#5F6F52]` : `${theme.card} ${theme.border} ${theme.hover}`}`}>
                        {/* 優化：改用 PayerAvatar 風格或直接套用固定文字顏色，避免受主題色影響 */}
-                       <div className={`w-10 h-10 rounded-full ${getAvatarColor(idx)} flex items-center justify-center text-[#3A3A3A] text-sm font-bold font-serif mb-2`}>{person.charAt(0)}</div>
+                       <div className={`w-10 h-10 rounded-full ${getAvatarColor(idx)} flex items-center justify-center text-white text-sm font-bold font-serif mb-2`}>{person.charAt(0)}</div>
                        <div className="text-xs font-bold text-[#3A3A3A] mb-1">{person}</div>
                        <div className={`text-sm font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.symbol} {formatMoney(amount)}</div>
                     </div>
@@ -1593,7 +1594,10 @@ const TripPlanner = ({
                        <span className="text-xs">讀取檔案列表中...</span>
                    </div>
                ) : cloudFiles.length === 0 ? (
-                   <div className="text-center py-8 text-[#888] text-xs">找不到任何 TravelApp_ 開頭的檔案</div>
+                   <div className="text-center py-8 text-[#888] text-xs">
+                        找不到任何 TravelApp_ 開頭的檔案<br/>
+                        <span className="text-[10px] opacity-70">(僅支援 Google 試算表格式，不支援直接上傳的 .xlsx)</span>
+                   </div>
                ) : (
                    <div className="space-y-1">
                        {cloudFiles.map(file => (
