@@ -189,7 +189,7 @@ export const generateNewProjectData = (title) => {
   };
 };
 
-// --- Cloud Data Parser (Optimized for Currency) ---
+// --- Cloud Data Parser (Optimized for Header Detection) ---
 export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   const getSheetData = (rangeName) => {
       const range = valueRanges.find(r => r.range.includes(rangeName));
@@ -201,7 +201,6 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   const ovMap = {};
   overviewData.forEach(row => { if(row[0]) ovMap[row[0]] = row[1]; });
   
-  // Logic: Use internal title, fallback to filename if empty
   const title = ovMap["專案標題"] || fileName.replace('TravelApp_', '').replace('.xlsx', '');
   const startDate = ovMap["出發日期"] || new Date().toISOString().split('T')[0];
   const endDate = ovMap["回國日期"] || getNextDay(startDate);
@@ -210,7 +209,6 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   const companionsStr = ovMap["旅行人員"] || "Me";
   const newCompanions = companionsStr.split(",").map(s => s.trim()).filter(s => s);
   
-  // Find Currency
   const countryName = ovMap["旅行國家"];
   const currencyCode = ovMap["貨幣代碼"];
   const exchangeRate = parseFloat(ovMap["匯率 (1外幣 = TWD)"]) || 1;
@@ -260,7 +258,6 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
           if (dayIndex < 0 || isNaN(dayIndex)) continue;
           
           if (!newItineraries[dayIndex]) newItineraries[dayIndex] = [];
-          
           const typeLabel = row[3];
           const typeId = itinLabelToId[typeLabel] || currentItinCats[0].id;
 
@@ -277,28 +274,70 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
       }
   }
 
-  // --- Parse Expenses ---
-  // Updated to read Column I (Index 8) for Currency Type
+  // --- Parse Expenses (Optimized for New Columns) ---
   const expenseData = getSheetData("費用") || [];
   const newExpenses = [];
+  
   if (expenseData.length > 1) {
+       // Header Detection
+       const headers = expenseData[0] || [];
+       const idx = {
+           date: headers.indexOf("日期"),
+           region: headers.indexOf("地區"),
+           cat: headers.indexOf("類別"),
+           title: headers.indexOf("項目"),
+           loc: headers.indexOf("地點"),
+           payer: headers.indexOf("付款人"),
+           
+           // Support New & Old formats
+           origCurrency: headers.indexOf("原始幣別"), // New
+           origAmount: headers.indexOf("原始金額"),   // New
+           
+           // Legacy or secondary
+           cost: headers.indexOf("金額"),
+           currency: headers.indexOf("幣別"),
+           
+           split: headers.indexOf("分帳細節"),
+           notes: headers.indexOf("備註")
+       };
+
        for (let i=1; i<expenseData.length; i++) {
           const row = expenseData[i];
           if (!row[0]) continue; 
 
-          const catLabel = row[2];
+          const catLabel = row[idx.cat];
           const catId = expLabelToId[catLabel] || currentExpCats[0].id;
-          const payer = row[5] || "Me";
-          const cost = parseFloat(row[6] && typeof row[6] === 'string' ? row[6].replace(/,/g,'') : row[6]) || 0;
+          const payer = row[idx.payer] || "Me";
           
-          const splitStr = row[7] || "";
+          // Cost parsing logic
+          let rawCost = 0;
+          let costType = 'FOREIGN';
+          
+          // 1. Try New "Original Amount" first
+          if (idx.origAmount !== -1 && row[idx.origAmount]) {
+             rawCost = parseFloat(typeof row[idx.origAmount] === 'string' ? row[idx.origAmount].replace(/,/g,'') : row[idx.origAmount]) || 0;
+          } 
+          // 2. Fallback to Old "Amount"
+          else if (idx.cost !== -1 && row[idx.cost]) {
+             rawCost = parseFloat(typeof row[idx.cost] === 'string' ? row[idx.cost].replace(/,/g,'') : row[idx.cost]) || 0;
+          }
+
+          // Currency Logic
+          let currencyStr = '';
+          if (idx.origCurrency !== -1 && row[idx.origCurrency]) currencyStr = row[idx.origCurrency].trim();
+          else if (idx.currency !== -1 && row[idx.currency]) currencyStr = row[idx.currency].trim();
+          
+          costType = currencyStr === 'TWD' ? 'TWD' : 'FOREIGN';
+
+          // Split parsing
+          const splitStr = idx.split !== -1 ? (row[idx.split] || "") : "";
           let shares = [payer];
           let details = [];
 
           if (splitStr.includes("分攤:")) {
               const sharesPart = splitStr.replace("分攤:", "").trim();
               shares = sharesPart.split(",").map(s => s.trim());
-              const shareAmount = Math.round(cost / shares.length);
+              const shareAmount = Math.round(rawCost / shares.length);
               details = shares.map((s, idx) => ({ id: Date.now() + idx + Math.random(), payer: payer, target: s, amount: shareAmount }));
           } else {
                shares = [payer]; 
@@ -314,24 +353,20 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
                }
           }
 
-          // Parse Currency Column (Index 8)
-          // If 'TWD' -> 'TWD', else default to 'FOREIGN'
-          const currencyColValue = row[8] ? row[8].trim() : '';
-          const costType = currencyColValue === 'TWD' ? 'TWD' : 'FOREIGN';
-
           newExpenses.push({
               id: Date.now() + Math.random() + i,
-              date: row[0],
-              region: row[1] || "",
+              date: row[idx.date],
+              region: row[idx.region] || "",
               category: catId,
-              title: row[3] || "未命名",
-              location: row[4] || "",
+              title: row[idx.title] || "未命名",
+              location: row[idx.loc] || "",
               payer: payer,
-              cost: cost,
-              currency: currencyCode,
-              costType: costType, // Added
+              cost: rawCost,
+              currency: currencyCode, // Store project currency code
+              costType: costType,     // Store logic type (TWD or FOREIGN)
               shares: shares,
-              details: details
+              details: details,
+              notes: idx.notes !== -1 ? (row[idx.notes] || "") : ""
           });
        }
   }
@@ -360,7 +395,7 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   );
 
   return {
-    themeId: 'mori', // Default theme for imported projects
+    themeId: 'mori',
     tripSettings: { title, startDate, endDate, days },
     companions: newCompanions,
     currencySettings: { selectedCountry, exchangeRate },
