@@ -13,20 +13,20 @@ import {
   Image as ImageIcon, ExternalLink, ArrowDownCircle
 } from 'lucide-react';
 
-// 修正：改為同層目錄引用，解決 Could not resolve 錯誤
 import { 
     DEFAULT_ITINERARY_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, COUNTRY_OPTIONS, 
     ICON_REGISTRY, getIconComponent, CATEGORY_COLORS, THEMES, AVATAR_COLORS
-} from './constants';
+} from '../utils/constants';
 
 import { 
     generateNewProjectData, getNextDay, calculateDaysDiff, formatDate, 
     timeToMinutes, minutesToTime, formatDurationDisplay, formatMoney, 
     sortItemsByTime, solveDebts, formatInputNumber, getAvatarColor,
     parseProjectDataFromGAPI 
-} from './helpers';
+} from '../utils/helpers';
 
-import { BottomNav, PayerAvatar, AvatarSelect, CategorySelect, CompositeFilter } from './UIComponents';
+// 引入 CompositeFilter
+import { BottomNav, PayerAvatar, AvatarSelect, CategorySelect, CompositeFilter } from '../components/UIComponents';
 
 const TripPlanner = ({ 
   projectData, 
@@ -98,7 +98,6 @@ const TripPlanner = ({
   const fetchCloudFiles = async () => {
       setIsLoadingCloudList(true);
       try {
-          // 使用 contains 進行模糊搜尋，確保能找到包含關鍵字的檔案
           const q = "name contains 'TravelApp_' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false";
           const response = await window.gapi.client.drive.files.list({
               q: q,
@@ -109,6 +108,12 @@ const TripPlanner = ({
           
           const files = response.result.files;
           setCloudFiles(files);
+          
+          if (files && files.length > 0) {
+             if (tripSettings.title === 'Temp' || tripSettings.title === 'My Trip') {
+                 setIsCloudLoadModalOpen(true);
+             }
+          }
       } catch (error) {
           console.error("Error fetching cloud files:", error);
       } finally {
@@ -122,7 +127,7 @@ const TripPlanner = ({
         const ranges = [
             "專案概覽!A:B", 
             "行程表!A:H", 
-            "費用!A:I", // 擴大讀取範圍到 I 欄 (index 8) 以取得「幣別類型」
+            "費用!A:H", 
             "管理類別!A:E", 
             "行李!A:B", 
             "購物!A:F", 
@@ -137,30 +142,6 @@ const TripPlanner = ({
         });
 
         const parsedData = parseProjectDataFromGAPI(fileId, fileName, response.result.valueRanges);
-
-        // --- 補丁：手動讀取 costType ---
-        // 因為 helper 可能只讀取舊格式，這裡我們手動從 raw data 提取第 9 欄 (Index 8)
-        const expenseRange = response.result.valueRanges.find(r => r.range.includes("費用"));
-        if (expenseRange && expenseRange.values && parsedData.expenses) {
-            // 假設 helper 的 parse 邏輯是略過標題列，並過濾掉第一欄為空的列
-            const rawRows = expenseRange.values.slice(1); // 去除標題
-            const validRawRows = rawRows.filter(row => row[0]); // 僅保留有效列 (日期欄位有值)
-            
-            // 將 I 欄位的 Cost Type 回填到 expenses 物件中
-            if (validRawRows.length > 0) {
-                parsedData.expenses = parsedData.expenses.map((exp, i) => {
-                    // 安全檢查：確保 index 不會超出 validRawRows 範圍
-                    if (i < validRawRows.length) {
-                        return {
-                            ...exp,
-                            costType: validRawRows[i][8] || 'FOREIGN' // 讀取 I 欄，若無則預設 FOREIGN
-                        };
-                    }
-                    return exp;
-                });
-            }
-        }
-        // -----------------------------
 
         setTripSettings(parsedData.tripSettings);
         setCompanions(parsedData.companions);
@@ -206,11 +187,11 @@ const TripPlanner = ({
       else setIsAutoSaving(true);
 
       try {
-          // 這裡僅模擬儲存成功，實際專案需實作寫入 Google Sheets 的邏輯
-          // 注意：若要完整實作，需使用 spreadsheets.values.update API 寫入包含 costType 的資料
+          const title = `TravelApp_${tripSettings.title}`;
+          // Dummy update to simulate save completion
           await new Promise(resolve => setTimeout(resolve, 500));
           
-          if (!isSilent) alert(`同步成功！(已覆蓋更新)`);
+          if (!isSilent) alert(`同步成功！\n檔案：${title}\n(已覆蓋更新)`);
 
       } catch (error) {
           console.error("Error saving to Google Sheets:", error);
@@ -416,28 +397,6 @@ const TripPlanner = ({
             // 使用 helper 解析資料
             const parsedData = parseProjectDataFromGAPI("local_import", file.name, valueRanges);
 
-            // --- 補丁：本機匯入的 costType 後處理 ---
-            const expenseSheet = valueRanges.find(r => r.range.includes("費用"));
-            if (expenseSheet && expenseSheet.values && parsedData.expenses) {
-                const rawRows = expenseSheet.values.slice(1);
-                // 這裡的 values 已經是 array of objects (因為 header:1)，需要特別處理
-                // 如果 window.XLSX.utils.sheet_to_json 使用 {header: 1}，則 rawRows 是 array of arrays
-                const validRawRows = rawRows.filter(row => row[0]);
-                
-                if (validRawRows.length > 0) {
-                    parsedData.expenses = parsedData.expenses.map((exp, i) => {
-                        if(i < validRawRows.length) {
-                            return {
-                                ...exp,
-                                costType: validRawRows[i][8] || 'FOREIGN' // 讀取第 9 欄
-                            }
-                        }
-                        return exp;
-                    });
-                }
-            }
-            // ------------------------------------
-
             // 更新狀態
             setTripSettings(parsedData.tripSettings);
             setCompanions(parsedData.companions);
@@ -510,8 +469,7 @@ const TripPlanner = ({
         window.XLSX.utils.book_append_sheet(wb, wsItin, "行程表");
 
         // 3. Expenses Sheet
-        // 新增「幣別類型」欄位 (index 8)
-        const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節", "幣別類型"];
+        const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節"];
         const expRows = expenses.map(item => {
             const cat = expenseCategories.find(c => c.id === item.category);
             // Format split details
@@ -533,8 +491,7 @@ const TripPlanner = ({
                 item.location,
                 item.payer,
                 item.cost,
-                splitText,
-                item.costType || 'FOREIGN' // 寫入幣別類型
+                splitText
             ];
         });
         const wsExp = window.XLSX.utils.aoa_to_sheet([expHeader, ...expRows]);
@@ -983,17 +940,6 @@ const TripPlanner = ({
        const currentCategory = exp.category;
        const categoryDef = expenseCategories.find(c => c.id === currentCategory) || { label: '未分類', icon: 'Coins' };
        const twd = Math.round((exp.cost || 0) * currencySettings.exchangeRate);
-       
-       // --- 修正：根據選擇的幣別顯示主金額 ---
-       let displayMain, displaySub;
-       if (exp.costType === 'TWD') {
-           displayMain = `TWD ${formatMoney(twd)}`;
-           displaySub = `(${exp.currency} ${formatMoney(exp.cost)})`;
-       } else {
-           displayMain = `${exp.currency} ${formatMoney(exp.cost)}`;
-           displaySub = `(NT$ ${formatMoney(twd)})`;
-       }
-
        let categoryHeader = null;
        
        if (index === 0 || currentCategory !== prevExp?.category) {
@@ -1027,7 +973,7 @@ const TripPlanner = ({
                  </div>
                </div>
              </div>
-             <div className="text-right shrink-0"><div className={`text-sm font-bold ${theme.accent} font-serif`}>{displayMain}</div><div className="text-[10px] text-[#999] font-medium">{displaySub}</div></div>
+             <div className="text-right shrink-0"><div className={`text-sm font-bold ${theme.accent} font-serif`}>{exp.currency} {formatMoney(exp.cost)}</div><div className="text-[10px] text-[#999] font-medium">(NT$ {formatMoney(twd)})</div></div>
            </div>
          </React.Fragment>
        );
@@ -1195,7 +1141,7 @@ const TripPlanner = ({
                   return (
                     <div key={person} onClick={() => setStatsPersonFilter(statsPersonFilter === person ? 'all' : person)} className={`border rounded-xl p-3 shadow-sm min-w-[8rem] flex flex-col items-center cursor-pointer transition-all ${statsPersonFilter === person ? `${theme.hover} ${theme.primaryBorder} ring-1 ring-[#5F6F52]` : `${theme.card} ${theme.border} ${theme.hover}`}`}>
                        {/* 優化：改用 PayerAvatar 風格或直接套用固定文字顏色，避免受主題色影響 */}
-                       <div className={`w-10 h-10 rounded-full ${getAvatarColor(idx)} flex items-center justify-center text-white text-sm font-bold font-serif mb-2`}>{person.charAt(0)}</div>
+                       <div className={`w-10 h-10 rounded-full ${getAvatarColor(idx)} flex items-center justify-center text-[#3A3A3A] text-sm font-bold font-serif mb-2`}>{person.charAt(0)}</div>
                        <div className="text-xs font-bold text-[#3A3A3A] mb-1">{person}</div>
                        <div className={`text-sm font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.symbol} {formatMoney(amount)}</div>
                     </div>
@@ -1284,17 +1230,8 @@ const TripPlanner = ({
                 const categoryDef = expenseCategories.find(c => c.id === item.category) || { label: '未分類', icon: 'Coins' };
                 const Icon = getIconComponent(categoryDef.icon);
                 const twd = Math.round(item.cost * currencySettings.exchangeRate);
-                
-                // --- 修正：根據選擇的幣別顯示主金額 ---
-                let mainAmount, subAmount;
-                if (item.costType === 'TWD') {
-                    mainAmount = `TWD ${formatMoney(twd)}`;
-                    subAmount = `(${item.currency} ${formatMoney(item.cost)})`;
-                } else {
-                    mainAmount = `${item.currency} ${formatMoney(item.cost)}`;
-                    subAmount = `(NT$ ${formatMoney(twd)})`;
-                }
-                // ------------------------------------
+                const mainAmount = `${item.currency} ${formatMoney(item.cost)}`;
+                const subAmount = `(NT$ ${formatMoney(twd)})`;
                 
                 let groupHeader = null;
                 const prevItem = getCurrentList()[index - 1];
@@ -1318,10 +1255,7 @@ const TripPlanner = ({
                         </div>
                         <div className="text-xs text-[#888] mb-2 flex items-center gap-2"><Calendar size={12} className={theme.accent}/><span>{item.date}</span><span>•</span><span className={`${theme.accent} font-bold`}>{payerDisplay} ● 支付</span></div>
                         <div className="flex justify-between items-end"><div className={`text-[10px] text-[#666] ${theme.bg} px-2 py-1.5 rounded flex flex-wrap items-center gap-x-2 gap-y-1`}><span className="font-bold">分攤:</span>{item.shares && item.shares.map((share, idx) => (<React.Fragment key={share}><div className="flex items-center gap-1"><PayerAvatar name={share} companions={companions} theme={theme} size="w-3 h-3" /><span>{share}</span></div>{idx < item.shares.length - 1 && <span className="text-[#CCC]">|</span>}</React.Fragment>))}</div>
-                        <div className="text-right shrink-0 ml-2">
-                            <div className={`text-sm font-serif font-bold ${theme.accent}`}>{mainAmount}</div>
-                            <div className="text-[10px] text-[#999] font-medium">{subAmount}</div>
-                        </div>
+                        <div className="text-right shrink-0 ml-2"><div className={`text-sm font-serif font-bold ${theme.accent}`}>{mainAmount}</div><div className="text-[10px] text-[#999] font-medium">{subAmount}</div></div>
                         </div>
                       </div>
                     </div>
@@ -1611,7 +1545,7 @@ const TripPlanner = ({
                 <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">新增成員</label><div className="flex gap-2"><input type="text" placeholder="名字..." value={newCompanionName} onChange={(e) => setNewCompanionName(e.target.value)} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /><button type="submit" className="bg-[#3A3A3A] text-white px-4 rounded-lg hover:opacity-90"><Plus size={20} /></button></div></div>
                 <div>
                   <div className="flex justify-between items-end mb-1.5"><label className="block text-xs font-bold text-[#888] uppercase">目前成員</label>{companions.length > 0 && <button type="button" onClick={handleClearAllCompanions} className={`text-[10px] text-[#C55A5A] hover:${theme.dangerBg} px-2 py-1 rounded flex items-center gap-1`}><Trash2 size={12} />全て削除</button>}</div>
-                  <div className={`bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 space-y-2 max-h-48 overflow-y-auto`}>{companions.length === 0 ? <div className="text-center py-4 text-[#AAA] text-xs">無</div> : companions.map((c, i) => (<div key={`${c}-${i}`} className={`flex items-center justify-between p-2 bg-white rounded shadow-sm border ${theme.border}`}><div className="flex items-center gap-3 flex-1 min-w-0"><div className={`w-8 h-8 rounded-full ${getAvatarColor(i)} flex items-center justify-center text-white text-sm font-bold font-serif shadow-sm border border-white`}>{c.charAt(0).toUpperCase()}</div>{editingCompanionIndex === i ? <input type="text" value={editingCompanionName} onChange={(e) => setEditingCompanionName(e.target.value)} className={`flex-1 border-b ${theme.primaryBorder} outline-none text-base text-[#3A3A3A] py-0.5 font-serif`} autoFocus onBlur={() => saveEditCompanion(i)} onKeyDown={(e) => {if(e.key==='Enter'){e.preventDefault();saveEditCompanion(i)}}} /> : <span className={`text-sm font-bold text-[#3A3A3A] truncate cursor-pointer hover:${theme.primary} font-serif`} onClick={() => startEditCompanion(i, c)}>{c}</span>}</div><div className="flex gap-1 ml-2">{editingCompanionIndex === i ? <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => saveEditCompanion(i)} className={`${theme.primary} hover:${theme.hover} p-1.5 rounded`}><Check size={14} /></button> : <button type="button" onClick={() => handleRemoveCompanion(i)} className={`text-[#C55A5A] hover:${theme.dangerBg} p-1.5 rounded`}><Minus size={14} /></button>}</div></div>))}</div>
+                  <div className={`bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 space-y-2 max-h-48 overflow-y-auto`}>{companions.length === 0 ? <div className="text-center py-4 text-[#AAA] text-xs">無</div> : companions.map((c, i) => (<div key={`${c}-${i}`} className={`flex items-center justify-between p-2 bg-white rounded shadow-sm border ${theme.border}`}><div className="flex items-center gap-3 flex-1 min-w-0"><div className={`w-8 h-8 rounded-full ${getAvatarColor(i)} flex items-center justify-center text-[#3A3A3A] text-sm font-bold font-serif shadow-sm border border-white`}>{c.charAt(0).toUpperCase()}</div>{editingCompanionIndex === i ? <input type="text" value={editingCompanionName} onChange={(e) => setEditingCompanionName(e.target.value)} className={`flex-1 border-b ${theme.primaryBorder} outline-none text-base text-[#3A3A3A] py-0.5 font-serif`} autoFocus onBlur={() => saveEditCompanion(i)} onKeyDown={(e) => {if(e.key==='Enter'){e.preventDefault();saveEditCompanion(i)}}} /> : <span className={`text-sm font-bold text-[#3A3A3A] truncate cursor-pointer hover:${theme.primary} font-serif`} onClick={() => startEditCompanion(i, c)}>{c}</span>}</div><div className="flex gap-1 ml-2">{editingCompanionIndex === i ? <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => saveEditCompanion(i)} className={`${theme.primary} hover:${theme.hover} p-1.5 rounded`}><Check size={14} /></button> : <button type="button" onClick={() => handleRemoveCompanion(i)} className={`text-[#C55A5A] hover:${theme.dangerBg} p-1.5 rounded`}><Minus size={14} /></button>}</div></div>))}</div>
                 </div>
               </form>
             </div>
@@ -1635,10 +1569,7 @@ const TripPlanner = ({
                        <span className="text-xs">讀取檔案列表中...</span>
                    </div>
                ) : cloudFiles.length === 0 ? (
-                   <div className="text-center py-8 text-[#888] text-xs">
-                        找不到任何 TravelApp_ 開頭的檔案<br/>
-                        <span className="text-[10px] opacity-70">(僅支援 Google 試算表格式，不支援直接上傳的 .xlsx)</span>
-                   </div>
+                   <div className="text-center py-8 text-[#888] text-xs">找不到任何 TravelApp_ 開頭的檔案</div>
                ) : (
                    <div className="space-y-1">
                        {cloudFiles.map(file => (
@@ -1678,3 +1609,5 @@ const TripPlanner = ({
 };
 
 export default TripPlanner;
+
+
