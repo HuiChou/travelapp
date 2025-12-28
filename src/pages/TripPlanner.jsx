@@ -1609,5 +1609,3 @@ const TripPlanner = ({
 };
 
 export default TripPlanner;
-
-
