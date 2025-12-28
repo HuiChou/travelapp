@@ -921,6 +921,14 @@ const TripPlanner = ({
     if (isNaN(val)) return;
     const newCost = parseFloat(val) || 0;
     let newDetails = formData.details || [];
+    
+    // When changing Total Cost, we need to redistribute.
+    // If details have 'EACH', it's complex because EACH means fixed amount per person.
+    // Simplified logic: If ANY target is EACH, we assume manual entry for that line is preferred,
+    // so we might not auto-distribute cleanly without more info.
+    // However, for standard UX, if user types Total, we distribute equally (default behavior).
+    // If they want "EACH", they should type in the detail line.
+    
     if (newDetails.length > 0) {
         const perLine = Math.floor(newCost / newDetails.length);
         const remainder = newCost - (perLine * newDetails.length);
@@ -930,12 +938,34 @@ const TripPlanner = ({
   };
 
   const addSplitDetail = () => {
-    const currentAllocated = (formData.details || []).reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+    const currentAllocated = (formData.details || []).reduce((sum, d) => {
+         // If target is EACH, the impact on Total Cost is amount * companions.length
+         // But for "Remaining" calculation, it's safer to just sum the displayed amounts for now 
+         // OR we should be consistent. 
+         // Let's stick to: Total Cost is the master. 
+         // When adding detail, we just add a row. User needs to adjust.
+         return sum + (parseFloat(d.amount) || 0);
+    }, 0);
+    
     const totalCost = parseFloat(formData.cost) || 0;
+    // Note: If we have 'EACH' items, this logic of 'remaining' is tricky. 
+    // Simplified: Just add a row with 0 or remaining if simple sum.
     const remaining = Math.max(0, totalCost - currentAllocated);
+    
     setFormData({ ...formData, details: [...(formData.details || []), { id: Date.now(), payer: 'Me', target: companions[0] || 'Me', amount: remaining }] });
   };
-  const removeSplitDetail = (detailId) => { setFormData({ ...formData, details: formData.details.filter(d => d.id !== detailId) }); };
+  
+  const removeSplitDetail = (detailId) => { 
+      const updatedDetails = formData.details.filter(d => d.id !== detailId);
+      // Recalculate Total Cost based on remaining details
+      let newCost = 0;
+      updatedDetails.forEach(d => {
+         if (d.target === 'EACH') newCost += (parseFloat(d.amount)||0) * companions.length;
+         else newCost += (parseFloat(d.amount)||0);
+      });
+      setFormData({ ...formData, details: updatedDetails, cost: newCost }); 
+  };
+  
   const updateSplitDetail = (detailId, field, value) => {
       const updatedDetails = formData.details.map(d => {
           if (d.id !== detailId) return d;
@@ -943,8 +973,21 @@ const TripPlanner = ({
           if (field === 'payer' && value === 'EACH') updates.target = 'EACH';
           return { ...d, ...updates };
       });
-      let newCost = formData.cost;
-      if (field === 'amount') newCost = updatedDetails.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+      
+      // OPTIMIZED: Auto-calculate Total Cost when detail amount changes
+      // This supports the "EACH" = Per Person logic.
+      let newCost = 0;
+      updatedDetails.forEach(d => {
+         if (d.target === 'EACH') {
+             // If target is EACH, the amount entered is per person.
+             // So total impact on cost is Amount * Companions Count
+             newCost += (parseFloat(d.amount) || 0) * companions.length;
+         } else {
+             // Standard: Amount is the total for that line
+             newCost += (parseFloat(d.amount) || 0);
+         }
+      });
+      
       setFormData({ ...formData, details: updatedDetails, cost: newCost });
   };
 
@@ -1006,6 +1049,9 @@ const TripPlanner = ({
 
     filteredSourceExpenses.forEach(exp => {
       // 統一將金額轉換為外幣進行統計
+      // 注意：這裡的 exp.cost 是總額。
+      // 當我們遍歷 details 時，我們會重新計算分攤。
+      // 但為了 categoryStats.real (真實總支出)，我們可以直接用總額。
       const amountForeign = toForeign(exp.cost || 0, exp.costType);
       const category = exp.category || 'other';
 
@@ -1020,28 +1066,51 @@ const TripPlanner = ({
           exp.details.forEach((d, idx) => {
               // 分帳細項金額也需轉換
               const dAmountRaw = parseFloat(d.amount) || 0;
-              // 細項金額的幣別跟隨主項目幣別
               const dAmountForeign = toForeign(dAmountRaw, exp.costType);
 
               let payer = d.payer || 'Unknown';
               let target = d.target || 'Unknown';
               let currentPayers = payer === 'EACH' ? companions : [payer];
               let currentTargets = (target === 'ALL' || target === 'EACH') ? companions : [target];
-              const totalLineCost = dAmountForeign;
-              const paidPerPerson = totalLineCost / currentPayers.length;
+              
+              // --- OPTIMIZED LOGIC FOR 'EACH' (各付) ---
+              let totalLineCost = 0;
+              let sharePerPerson = 0;
+              let paidPerPerson = 0;
+
+              if (target === 'EACH') {
+                  // DEFINITION CHANGE: If target is EACH, input amount is PER PERSON.
+                  // So total cost for this line = Amount * Number of People
+                  sharePerPerson = dAmountForeign;
+                  totalLineCost = sharePerPerson * currentTargets.length;
+                  
+                  if (payer === 'EACH') {
+                      // Everyone paid for themselves.
+                      // So 'paid' amount for each person = sharePerPerson
+                      paidPerPerson = sharePerPerson;
+                  } else {
+                      // One person (e.g. Me) paid for everyone's 'each' share.
+                      // So Payer paid the total sum.
+                      paidPerPerson = totalLineCost / currentPayers.length;
+                  }
+              } else {
+                  // STANDARD LOGIC (ALL/Specific): Input amount is TOTAL for this line.
+                  totalLineCost = dAmountForeign;
+                  paidPerPerson = totalLineCost / currentPayers.length;
+                  sharePerPerson = totalLineCost / currentTargets.length;
+              }
               
               currentPayers.forEach(p => getSafeStat(p).paid += paidPerPerson);
-              
-              const sharePerPerson = totalLineCost / currentTargets.length;
               currentTargets.forEach(t => getSafeStat(t).share += sharePerPerson);
 
+              // Personal Expenses List Construction
               if (target === 'ALL' || target === 'EACH') {
                   companions.forEach(c => {
                       personalExpensesList.push({
                            ...exp, 
                            id: `${exp.id}_${idx}_${c}`, 
-                           cost: sharePerPerson, // 這裡儲存轉換後的外幣金額 (供列表顯示)
-                           costType: 'FOREIGN', // 個人分攤項目統一視為外幣顯示
+                           cost: sharePerPerson, // Always show what THIS person is responsible for
+                           costType: 'FOREIGN', 
                            currency: currencySettings.selectedCountry.currency,
                            payer: c, 
                            realPayer: (payer === 'EACH' ? c : payer), 
@@ -1050,12 +1119,12 @@ const TripPlanner = ({
                         });
                   });
                   if (!categoryStats.personal[category]) categoryStats.personal[category] = 0;
-                  categoryStats.personal[category] += totalLineCost;
+                  categoryStats.personal[category] += totalLineCost; // Using totalLineCost for category totals
               } else {
                   personalExpensesList.push({ 
                       ...exp, 
                       id: `${exp.id}_${idx}`, 
-                      cost: totalLineCost, // 外幣
+                      cost: sharePerPerson, 
                       costType: 'FOREIGN',
                       currency: currencySettings.selectedCountry.currency,
                       payer: target, 
@@ -1170,7 +1239,7 @@ const TripPlanner = ({
                    {statsMode === 'personal' ? (
                      <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.realPayer} companions={companions} theme={theme}/><span>{exp.realPayer}</span></span></>
                    ) : (
-                     <><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>分攤:</span>{exp.details && exp.details.some(d => d.target === 'ALL' || d.target === 'EACH') ? <span className={`${theme.hover} px-1 rounded ${theme.primary}`}>全員</span> : <span>{exp.shares ? exp.shares.length : 0}人</span>}</span></>
+                     <><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>分攤:</span>{exp.details && exp.details.some(d => d.target === 'ALL' || d.target === 'EACH') ? <span className={`${theme.hover} px-1 rounded ${theme.primary}`}>{exp.details.some(d=>d.target==='EACH')?'各付':'全員'}</span> : <span>{exp.shares ? exp.shares.length : 0}人</span>}</span></>
                    )}
                  </div>
                </div>
@@ -1196,6 +1265,22 @@ const TripPlanner = ({
   };
 
   const { chartData: categoryChartData, maxAmount: maxCategoryAmount } = getCategoryChartData();
+
+  // Helper for Checklist Grouping
+  const groupListByRegion = (list) => {
+    const grouped = {};
+    list.forEach(item => {
+        const region = item.region || '未分類';
+        if (!grouped[region]) grouped[region] = [];
+        grouped[region].push(item);
+    });
+    // Sort regions alphabetically or keep natural order? Natural order of appearance is often better for simple lists, but sorted is nice.
+    // Let's sort keys to be deterministic.
+    return Object.keys(grouped).sort().reduce((obj, key) => { 
+        obj[key] = grouped[key]; 
+        return obj;
+    }, {});
+  };
 
   return (
     <div className={`min-h-screen ${theme.bg} text-[#464646] font-sans pb-32 ${theme.selection} overflow-x-hidden`}>
@@ -1435,7 +1520,58 @@ const TripPlanner = ({
         ) : (
           <div className="space-y-3 relative">
             {viewMode === 'itinerary' && <div className={`absolute left-[4.5rem] top-4 bottom-4 w-px ${theme.border} -z-10`}></div>}
-            {getCurrentList().map((item, index) => {
+            {/* UPDATED: Grouped Checklist Rendering for specific tabs */}
+            {(viewMode === 'checklist' && (checklistTab === 'shopping' || checklistTab === 'food' || checklistTab === 'sightseeing')) ? (
+                Object.entries(groupListByRegion(getCurrentList())).map(([region, items]) => (
+                    <div key={region} className="animate-in fade-in">
+                        <div className={`sticky top-0 z-10 ${theme.bg}/95 backdrop-blur-sm py-2 px-1 mb-2 mt-4 border-b ${theme.border} flex items-center gap-2 first:mt-0`}>
+                            <MapIcon size={16} className={theme.primary} />
+                            <span className={`text-lg font-bold ${theme.primary} font-serif`}>{region}</span>
+                        </div>
+                        <div className="space-y-3">
+                            {items.map((item, index) => (
+                                <div key={item.id} className="draggable-item group relative" draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd}>
+                                    <div onClick={() => toggleComplete(item.id)} className={`${theme.card} rounded-xl p-4 border ${theme.border} shadow-sm transition-all flex gap-4 items-start cursor-pointer ${item.completed ? 'opacity-50 grayscale' : ''}`}>
+                                        <div className={`mt-1 w-5 h-5 rounded border flex items-center justify-center transition-all shrink-0 ${item.completed ? `${theme.primaryBg} ${theme.primaryBorder} text-white` : `bg-white ${theme.border} text-transparent hover:${theme.primaryBorder}`}`}><Check size={12} strokeWidth={3} /></div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-start gap-2">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    {/* UPDATED: CheckList Title Style to match Itinerary */}
+                                                    <h3 className={`text-xl font-bold font-serif leading-tight hover:${theme.primary} transition-colors ${item.completed ? 'text-[#AAA] line-through' : 'text-[#3A3A3A]'}`} onClick={(e) => { e.stopPropagation(); openEditModal(item); }}>{item.title}</h3>
+                                                    {item.image && <a href={item.image.link} target="_blank" className="text-[#888] hover:text-[#5F6F52] transition-colors" title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}
+                                                    <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.title, item.id + '_title'); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder} opacity-0 group-hover:opacity-100 transition-opacity shrink-0`} title="複製標題">{copiedId === (item.id + '_title') ? <Check size={12} className={theme.primary} /> : <Copy size={12} />}</button>
+                                                </div>
+                                                {item.cost > 0 && !item.completed && (<div className="text-right shrink-0"><div className={`text-sm font-bold ${theme.accent}`}>{currencySettings.selectedCountry.symbol} {formatMoney(item.cost)}</div></div>)}
+                                            </div>
+                                            <div className="mt-2 space-y-1">
+                                                {item.location && (
+                                                    <div className={`flex items-center gap-1 group/location -ml-1.5 px-1.5 py-0.5 rounded ${theme.hover} transition-colors w-fit`}>
+                                                        <MapPin size={12} className={theme.accent} />
+                                                        {/* UPDATED: CheckList Location Style to match Itinerary (text-xs text-[#666666]) */}
+                                                        <span className="text-xs text-[#666666]">{item.location}</span>
+                                                        <div className="flex gap-2 ml-1 opacity-0 group-hover/location:opacity-100 transition-opacity">
+                                                            <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.location, item.id); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder}`} title="複製地址">
+                                                                {copiedId === item.id ? <Check size={14} className={theme.primary} /> : <Copy size={14} />}
+                                                            </button>
+                                                            <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.location)}`} target="_blank" rel="noreferrer" className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder}`} onClick={(e) => e.stopPropagation()} title="Google Maps 導航">
+                                                                <Navigation size={14} />
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {item.notes && <div className={`text-[10px] text-[#888] ${theme.hover} p-1.5 rounded inline-block flex items-center gap-1`}><Tag size={10} className={theme.accent}/> {item.notes}</div>}
+                                            </div>
+                                        </div>
+                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} className={`text-[#999] hover:${theme.danger} opacity-0 group-hover:opacity-100 p-1`}><Trash2 size={20} /></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))
+            ) : (
+            // Default Rendering for Expense, Packing, Itinerary
+            getCurrentList().map((item, index) => {
               if (viewMode === 'expenses') {
                 const categoryDef = expenseCategories.find(c => c.id === item.category) || { label: '未分類', icon: 'Coins' };
                 const Icon = getIconComponent(categoryDef.icon);
@@ -1592,7 +1728,6 @@ const TripPlanner = ({
                           {item.cost > 0 && (checklistTab !== 'packing') && !item.completed && (<div className="text-right shrink-0"><div className={`text-sm font-bold ${theme.accent}`}>{currencySettings.selectedCountry.symbol} {formatMoney(item.cost)}</div></div>)}
                       </div>
                       {(checklistTab !== 'packing') && (<div className="mt-2 space-y-1">
-                          {/* 1. Checklist Address Copy/Nav - Modified here */}
                           {item.location && (
                               <div className={`flex items-center gap-1 group/location -ml-1.5 px-1.5 py-0.5 rounded ${theme.hover} transition-colors w-fit`}>
                                 <MapPin size={12} className={theme.accent} />
@@ -1614,7 +1749,8 @@ const TripPlanner = ({
                   </div>
                 </div>
               );
-            })}
+            })
+            )}
           </div>
         )}
       </main>

@@ -346,8 +346,19 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
                    shares = [];
                    details = parts.map((p, idx) => {
                        const [name, amt] = p.split(":").map(x => x.trim());
-                       const targetName = name === '全員' ? 'ALL' : name;
-                       if (!shares.includes(targetName)) shares.push(targetName);
+                       
+                       // UPDATED: Handle "各付" or "EACH" -> 'EACH'
+                       let targetName = name;
+                       if (name === '全員') targetName = 'ALL';
+                       else if (name === '各付' || name === 'EACH') targetName = 'EACH';
+                       
+                       // Only add to shares list if it's a specific person (not special keywords)
+                       // Or we can just store the targetName. 
+                       // For display logic 'shares' array usually contains names.
+                       if (targetName !== 'ALL' && targetName !== 'EACH' && !shares.includes(targetName)) {
+                           shares.push(targetName);
+                       }
+                       
                        return { id: Date.now() + idx + Math.random(), payer: payer, target: targetName, amount: parseFloat(amt) || 0 }
                    });
                }
