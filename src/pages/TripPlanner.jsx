@@ -13,19 +13,20 @@ import {
   Image as ImageIcon, ExternalLink, ArrowDownCircle
 } from 'lucide-react';
 
+// 修正：改為同層目錄引用，解決 Could not resolve 錯誤
 import { 
     DEFAULT_ITINERARY_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, COUNTRY_OPTIONS, 
     ICON_REGISTRY, getIconComponent, CATEGORY_COLORS, THEMES, AVATAR_COLORS
-} from '../utils/constants';
+} from './constants';
 
 import { 
     generateNewProjectData, getNextDay, calculateDaysDiff, formatDate, 
     timeToMinutes, minutesToTime, formatDurationDisplay, formatMoney, 
     sortItemsByTime, solveDebts, formatInputNumber, getAvatarColor,
     parseProjectDataFromGAPI 
-} from '../utils/helpers';
+} from './helpers';
 
-import { BottomNav, PayerAvatar, AvatarSelect, CategorySelect, CompositeFilter } from '../components/UIComponents';
+import { BottomNav, PayerAvatar, AvatarSelect, CategorySelect, CompositeFilter } from './UIComponents';
 
 const TripPlanner = ({ 
   projectData, 
@@ -108,14 +109,6 @@ const TripPlanner = ({
           
           const files = response.result.files;
           setCloudFiles(files);
-          
-          // 如果是剛建立的空白專案，且有雲端檔案，主動提示
-          if (files && files.length > 0) {
-             if (tripSettings.title === 'Temp' || tripSettings.title === 'My Trip') {
-                 // 不自動打開，避免打擾，使用者可透過選單開啟
-                 // setIsCloudLoadModalOpen(true);
-             }
-          }
       } catch (error) {
           console.error("Error fetching cloud files:", error);
       } finally {
@@ -129,7 +122,7 @@ const TripPlanner = ({
         const ranges = [
             "專案概覽!A:B", 
             "行程表!A:H", 
-            "費用!A:H", 
+            "費用!A:I", // 擴大讀取範圍到 I 欄 (index 8) 以取得「幣別類型」
             "管理類別!A:E", 
             "行李!A:B", 
             "購物!A:F", 
@@ -144,6 +137,30 @@ const TripPlanner = ({
         });
 
         const parsedData = parseProjectDataFromGAPI(fileId, fileName, response.result.valueRanges);
+
+        // --- 補丁：手動讀取 costType ---
+        // 因為 helper 可能只讀取舊格式，這裡我們手動從 raw data 提取第 9 欄 (Index 8)
+        const expenseRange = response.result.valueRanges.find(r => r.range.includes("費用"));
+        if (expenseRange && expenseRange.values && parsedData.expenses) {
+            // 假設 helper 的 parse 邏輯是略過標題列，並過濾掉第一欄為空的列
+            const rawRows = expenseRange.values.slice(1); // 去除標題
+            const validRawRows = rawRows.filter(row => row[0]); // 僅保留有效列 (日期欄位有值)
+            
+            // 將 I 欄位的 Cost Type 回填到 expenses 物件中
+            if (validRawRows.length > 0) {
+                parsedData.expenses = parsedData.expenses.map((exp, i) => {
+                    // 安全檢查：確保 index 不會超出 validRawRows 範圍
+                    if (i < validRawRows.length) {
+                        return {
+                            ...exp,
+                            costType: validRawRows[i][8] || 'FOREIGN' // 讀取 I 欄，若無則預設 FOREIGN
+                        };
+                    }
+                    return exp;
+                });
+            }
+        }
+        // -----------------------------
 
         setTripSettings(parsedData.tripSettings);
         setCompanions(parsedData.companions);
@@ -190,7 +207,7 @@ const TripPlanner = ({
 
       try {
           // 這裡僅模擬儲存成功，實際專案需實作寫入 Google Sheets 的邏輯
-          // const title = `TravelApp_${tripSettings.title}`;
+          // 注意：若要完整實作，需使用 spreadsheets.values.update API 寫入包含 costType 的資料
           await new Promise(resolve => setTimeout(resolve, 500));
           
           if (!isSilent) alert(`同步成功！(已覆蓋更新)`);
@@ -399,6 +416,28 @@ const TripPlanner = ({
             // 使用 helper 解析資料
             const parsedData = parseProjectDataFromGAPI("local_import", file.name, valueRanges);
 
+            // --- 補丁：本機匯入的 costType 後處理 ---
+            const expenseSheet = valueRanges.find(r => r.range.includes("費用"));
+            if (expenseSheet && expenseSheet.values && parsedData.expenses) {
+                const rawRows = expenseSheet.values.slice(1);
+                // 這裡的 values 已經是 array of objects (因為 header:1)，需要特別處理
+                // 如果 window.XLSX.utils.sheet_to_json 使用 {header: 1}，則 rawRows 是 array of arrays
+                const validRawRows = rawRows.filter(row => row[0]);
+                
+                if (validRawRows.length > 0) {
+                    parsedData.expenses = parsedData.expenses.map((exp, i) => {
+                        if(i < validRawRows.length) {
+                            return {
+                                ...exp,
+                                costType: validRawRows[i][8] || 'FOREIGN' // 讀取第 9 欄
+                            }
+                        }
+                        return exp;
+                    });
+                }
+            }
+            // ------------------------------------
+
             // 更新狀態
             setTripSettings(parsedData.tripSettings);
             setCompanions(parsedData.companions);
@@ -471,7 +510,8 @@ const TripPlanner = ({
         window.XLSX.utils.book_append_sheet(wb, wsItin, "行程表");
 
         // 3. Expenses Sheet
-        const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節"];
+        // 新增「幣別類型」欄位 (index 8)
+        const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節", "幣別類型"];
         const expRows = expenses.map(item => {
             const cat = expenseCategories.find(c => c.id === item.category);
             // Format split details
@@ -493,7 +533,8 @@ const TripPlanner = ({
                 item.location,
                 item.payer,
                 item.cost,
-                splitText
+                splitText,
+                item.costType || 'FOREIGN' // 寫入幣別類型
             ];
         });
         const wsExp = window.XLSX.utils.aoa_to_sheet([expHeader, ...expRows]);
@@ -1570,7 +1611,7 @@ const TripPlanner = ({
                 <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">新增成員</label><div className="flex gap-2"><input type="text" placeholder="名字..." value={newCompanionName} onChange={(e) => setNewCompanionName(e.target.value)} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /><button type="submit" className="bg-[#3A3A3A] text-white px-4 rounded-lg hover:opacity-90"><Plus size={20} /></button></div></div>
                 <div>
                   <div className="flex justify-between items-end mb-1.5"><label className="block text-xs font-bold text-[#888] uppercase">目前成員</label>{companions.length > 0 && <button type="button" onClick={handleClearAllCompanions} className={`text-[10px] text-[#C55A5A] hover:${theme.dangerBg} px-2 py-1 rounded flex items-center gap-1`}><Trash2 size={12} />全て削除</button>}</div>
-                  <div className={`bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 space-y-2 max-h-48 overflow-y-auto`}>{companions.length === 0 ? <div className="text-center py-4 text-[#AAA] text-xs">無</div> : companions.map((c, i) => (<div key={`${c}-${i}`} className={`flex items-center justify-between p-2 bg-white rounded shadow-sm border ${theme.border}`}><div className="flex items-center gap-3 flex-1 min-w-0"><div className={`w-8 h-8 rounded-full ${getAvatarColor(i)} flex items-center justify-center text-[#3A3A3A] text-sm font-bold font-serif shadow-sm border border-white`}>{c.charAt(0).toUpperCase()}</div>{editingCompanionIndex === i ? <input type="text" value={editingCompanionName} onChange={(e) => setEditingCompanionName(e.target.value)} className={`flex-1 border-b ${theme.primaryBorder} outline-none text-base text-[#3A3A3A] py-0.5 font-serif`} autoFocus onBlur={() => saveEditCompanion(i)} onKeyDown={(e) => {if(e.key==='Enter'){e.preventDefault();saveEditCompanion(i)}}} /> : <span className={`text-sm font-bold text-[#3A3A3A] truncate cursor-pointer hover:${theme.primary} font-serif`} onClick={() => startEditCompanion(i, c)}>{c}</span>}</div><div className="flex gap-1 ml-2">{editingCompanionIndex === i ? <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => saveEditCompanion(i)} className={`${theme.primary} hover:${theme.hover} p-1.5 rounded`}><Check size={14} /></button> : <button type="button" onClick={() => handleRemoveCompanion(i)} className={`text-[#C55A5A] hover:${theme.dangerBg} p-1.5 rounded`}><Minus size={14} /></button>}</div></div>))}</div>
+                  <div className={`bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 space-y-2 max-h-48 overflow-y-auto`}>{companions.length === 0 ? <div className="text-center py-4 text-[#AAA] text-xs">無</div> : companions.map((c, i) => (<div key={`${c}-${i}`} className={`flex items-center justify-between p-2 bg-white rounded shadow-sm border ${theme.border}`}><div className="flex items-center gap-3 flex-1 min-w-0"><div className={`w-8 h-8 rounded-full ${getAvatarColor(i)} flex items-center justify-center text-white text-sm font-bold font-serif shadow-sm border border-white`}>{c.charAt(0).toUpperCase()}</div>{editingCompanionIndex === i ? <input type="text" value={editingCompanionName} onChange={(e) => setEditingCompanionName(e.target.value)} className={`flex-1 border-b ${theme.primaryBorder} outline-none text-base text-[#3A3A3A] py-0.5 font-serif`} autoFocus onBlur={() => saveEditCompanion(i)} onKeyDown={(e) => {if(e.key==='Enter'){e.preventDefault();saveEditCompanion(i)}}} /> : <span className={`text-sm font-bold text-[#3A3A3A] truncate cursor-pointer hover:${theme.primary} font-serif`} onClick={() => startEditCompanion(i, c)}>{c}</span>}</div><div className="flex gap-1 ml-2">{editingCompanionIndex === i ? <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => saveEditCompanion(i)} className={`${theme.primary} hover:${theme.hover} p-1.5 rounded`}><Check size={14} /></button> : <button type="button" onClick={() => handleRemoveCompanion(i)} className={`text-[#C55A5A] hover:${theme.dangerBg} p-1.5 rounded`}><Minus size={14} /></button>}</div></div>))}</div>
                 </div>
               </form>
             </div>
