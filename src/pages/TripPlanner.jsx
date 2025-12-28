@@ -97,6 +97,7 @@ const TripPlanner = ({
   const fetchCloudFiles = async () => {
       setIsLoadingCloudList(true);
       try {
+          // 使用 contains 進行模糊搜尋，確保能找到包含關鍵字的檔案
           const q = "name contains 'TravelApp_' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false";
           const response = await window.gapi.client.drive.files.list({
               q: q,
@@ -120,7 +121,7 @@ const TripPlanner = ({
         const ranges = [
             "專案概覽!A:B", 
             "行程表!A:H", 
-            "費用!A:I", 
+            "費用!A:I", // 讀取到 I 欄 (index 8)
             "管理類別!A:E", 
             "行李!A:B", 
             "購物!A:F", 
@@ -135,24 +136,6 @@ const TripPlanner = ({
         });
 
         const parsedData = parseProjectDataFromGAPI(fileId, fileName, response.result.valueRanges);
-
-        // --- 補丁：手動讀取 costType (欄位 I / Index 8) ---
-        const expenseRange = response.result.valueRanges.find(r => r.range.includes("費用"));
-        if (expenseRange && expenseRange.values && parsedData.expenses) {
-            const rawRows = expenseRange.values.slice(1); // 去除標題
-            const validRawRows = rawRows.filter(row => row[0]); // 僅保留有效列
-            
-            // 安全地回填 costType
-            if (validRawRows.length > 0) {
-                parsedData.expenses = parsedData.expenses.map((exp, i) => {
-                    if (i < validRawRows.length) {
-                        return { ...exp, costType: validRawRows[i][8] || 'FOREIGN' };
-                    }
-                    return exp;
-                });
-            }
-        }
-        // -----------------------------
 
         setTripSettings(parsedData.tripSettings);
         setCompanions(parsedData.companions);
@@ -183,7 +166,7 @@ const TripPlanner = ({
 
       const timer = setTimeout(() => {
           handleSaveToGoogleSheet(true); 
-      }, 30000); // Auto save every 30s instead of 5s to reduce API calls
+      }, 30000); 
 
       return () => clearTimeout(timer);
   }, [tripSettings, itineraries, expenses, packingList, shoppingList, foodList, sightseeingList, googleUser, gapiInited, googleDriveFileId]);
@@ -218,7 +201,7 @@ const TripPlanner = ({
           Object.keys(itineraries).sort((a,b)=>a-b).forEach(dayIndex => {
               const items = itineraries[dayIndex] || [];
               items.forEach(item => {
-                  if (item.isShadow) return; // 跳過影子行程，不寫入檔案
+                  if (item.isShadow) return; 
                   const cat = itineraryCategories.find(c => c.id === item.type);
                   itinRows.push([
                       `Day ${parseInt(dayIndex) + 1}`,
@@ -235,13 +218,14 @@ const TripPlanner = ({
           const itinValues = [itinHeader, ...itinRows];
 
           // C. 費用 (含幣別類型)
-          const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節", "幣別類型"];
+          // 優化：寫入實際幣別代碼 (例如 JPY) 而非 'FOREIGN'
+          const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節", "幣別"];
           const expRows = expenses.map(item => {
               const cat = expenseCategories.find(c => c.id === item.category);
               let splitText = "";
               if (item.details && item.details.length > 0) {
                   splitText = item.details.map(d => {
-                    const target = d.target === 'ALL' ? '全員' : (d.target === 'EACH' ? '各付' : d.target);
+                    const target = d.target === 'ALL' ? '均攤' : (d.target === 'EACH' ? '各付' : d.target);
                     return `${target}:${d.amount}`; 
                   }).join(", ");
               } else {
@@ -256,7 +240,7 @@ const TripPlanner = ({
                   item.payer,
                   item.cost,
                   splitText,
-                  item.costType || 'FOREIGN'
+                  item.costType === 'TWD' ? 'TWD' : currencySettings.selectedCountry.currency // 寫入實際幣別
               ];
           });
           const expValues = [expHeader, ...expRows];
@@ -283,19 +267,18 @@ const TripPlanner = ({
           const sightRows = sightseeingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已去" : "未去", i.notes]);
           const sightValues = [shopHeader, ...sightRows];
 
-          // 2. 確定檔案 ID (File Handling)
+          // 2. 確定檔案 ID
           let targetFileId = googleDriveFileId;
 
-          // 若沒有 ID，建立新檔案
           if (!targetFileId) {
               const createRes = await window.gapi.client.sheets.spreadsheets.create({
                   properties: { title: `TravelApp_${tripSettings.title}` }
               });
               targetFileId = createRes.result.spreadsheetId;
-              setGoogleDriveFileId(targetFileId); // 更新本地狀態
+              setGoogleDriveFileId(targetFileId); 
           }
 
-          // 3. 確保工作表存在 (Ensure Sheets Exist)
+          // 3. 確保工作表存在
           const ssMeta = await window.gapi.client.sheets.spreadsheets.get({ spreadsheetId: targetFileId });
           const existingSheetTitles = ssMeta.result.sheets.map(s => s.properties.title);
           const requiredSheets = ["專案概覽", "行程表", "費用", "管理類別", "行李", "購物", "美食", "景點"];
@@ -314,7 +297,7 @@ const TripPlanner = ({
               });
           }
 
-          // 4. 寫入資料 (Batch Update)
+          // 4. 寫入資料
           const dataBody = [
               { range: "專案概覽!A1", values: overviewValues },
               { range: "行程表!A1", values: itinValues },
@@ -408,7 +391,7 @@ const TripPlanner = ({
           const folderId = await ensureTravelAppFolder();
           
           const metadata = {
-              name: formData.title, // 使用項目標題命名
+              name: formData.title, 
               parents: [folderId]
           };
 
@@ -453,7 +436,7 @@ const TripPlanner = ({
       } catch (err) {
           console.error("Delete Error:", err);
           alert("刪除失敗，可能檔案已不存在。");
-          setFormData(prev => ({ ...prev, image: null })); // 若遠端已刪除，本地也清空
+          setFormData(prev => ({ ...prev, image: null })); 
       } finally {
           setIsUploadingImage(false);
       }
@@ -515,10 +498,7 @@ const TripPlanner = ({
             const data = new Uint8Array(evt.target.result);
             const workbook = window.XLSX.read(data, { type: 'array' });
             
-            // 轉換為 GAPI 格式的 valueRanges 以重用 parseProjectDataFromGAPI
             const valueRanges = [];
-            
-            // 定義所有需要的 Sheet 名稱
             const requiredSheets = ["專案概覽", "行程表", "費用", "管理類別", "行李", "購物", "美食", "景點"];
             
             requiredSheets.forEach(sheetName => {
@@ -538,32 +518,8 @@ const TripPlanner = ({
                 return;
             }
 
-            // 使用 helper 解析資料
             const parsedData = parseProjectDataFromGAPI("local_import", file.name, valueRanges);
 
-            // --- 補丁：本機匯入的 costType 後處理 ---
-            const expenseSheet = valueRanges.find(r => r.range.includes("費用"));
-            if (expenseSheet && expenseSheet.values && parsedData.expenses) {
-                const rawRows = expenseSheet.values.slice(1);
-                // 這裡的 values 已經是 array of objects (因為 header:1)，需要特別處理
-                // 如果 window.XLSX.utils.sheet_to_json 使用 {header: 1}，則 rawRows 是 array of arrays
-                const validRawRows = rawRows.filter(row => row[0]);
-                
-                if (validRawRows.length > 0) {
-                    parsedData.expenses = parsedData.expenses.map((exp, i) => {
-                        if(i < validRawRows.length) {
-                            return {
-                                ...exp,
-                                costType: validRawRows[i][8] || 'FOREIGN' // 讀取第 9 欄
-                            }
-                        }
-                        return exp;
-                    });
-                }
-            }
-            // ------------------------------------
-
-            // 更新狀態
             setTripSettings(parsedData.tripSettings);
             setCompanions(parsedData.companions);
             setCurrencySettings(parsedData.currencySettings);
@@ -582,7 +538,7 @@ const TripPlanner = ({
             console.error("Import Error:", error);
             alert("匯入失敗，請確認檔案格式正確。");
         } finally {
-            e.target.value = null; // Reset input
+            e.target.value = null; 
         }
     };
     reader.readAsArrayBuffer(file);
@@ -635,16 +591,15 @@ const TripPlanner = ({
         window.XLSX.utils.book_append_sheet(wb, wsItin, "行程表");
 
         // 3. Expenses Sheet
-        // 新增「幣別類型」欄位 (index 8)
-        const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節", "幣別類型"];
+        // 優化：寫入實際幣別代碼 (例如 JPY) 而非 'FOREIGN'
+        const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節", "幣別"];
         const expRows = expenses.map(item => {
             const cat = expenseCategories.find(c => c.id === item.category);
-            // Format split details
             let splitText = "";
             if (item.details && item.details.length > 0) {
                 splitText = item.details.map(d => {
-                const target = d.target === 'ALL' ? '全員' : (d.target === 'EACH' ? '各付' : d.target);
-                return `${target}:${d.amount}`; 
+                    const target = d.target === 'ALL' ? '均攤' : (d.target === 'EACH' ? '各付' : d.target);
+                    return `${target}:${d.amount}`; 
                 }).join(", ");
             } else {
                 splitText = item.shares ? `分攤: ${item.shares.join(", ")}` : '';
@@ -659,7 +614,7 @@ const TripPlanner = ({
                 item.payer,
                 item.cost,
                 splitText,
-                item.costType || 'FOREIGN' // 寫入幣別類型
+                item.costType === 'TWD' ? 'TWD' : currencySettings.selectedCountry.currency // 寫入實際幣別
             ];
         });
         const wsExp = window.XLSX.utils.aoa_to_sheet([expHeader, ...expRows]);
@@ -673,7 +628,7 @@ const TripPlanner = ({
         const wsCat = window.XLSX.utils.aoa_to_sheet([catHeader, ...catRows]);
         window.XLSX.utils.book_append_sheet(wb, wsCat, "管理類別");
 
-        // 5. Checklists (Packing, Shopping, Food, Sightseeing)
+        // 5. Checklists
         const packingHeader = ["物品", "狀態"];
         const packingRows = packingList.map(i => [i.title, i.completed ? "已完成" : "未完成"]);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([packingHeader, ...packingRows]), "行李");
@@ -688,7 +643,6 @@ const TripPlanner = ({
         const sightRows = sightseeingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已去" : "未去", i.notes]);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([shopHeader, ...sightRows]), "景點");
 
-        // Write File
         const fileName = `TravelApp_${tripSettings.title}.xlsx`;
         window.XLSX.writeFile(wb, fileName);
     } catch (e) {
@@ -705,11 +659,9 @@ const TripPlanner = ({
     });
   };
 
-  // --- 專家優化：動態計算跨日行程 (Shadow Items) ---
   const getShadowItems = (dayIdx, allItineraries) => {
     if (dayIdx <= 0) return [];
     
-    // 檢查前一天的行程
     const prevDayItems = allItineraries[dayIdx - 1] || [];
     const shadows = [];
     
@@ -718,19 +670,16 @@ const TripPlanner = ({
         const duration = item.duration || 0;
         const endMin = startMin + duration;
         
-        // 如果行程結束時間超過 24 小時 (1440 分鐘)
         if (endMin >= 1440) {
-            // 計算溢出的時間點 (例如 26:00 -> 02:00)
-            // minutesToTime 函式已經會處理 % 24 的邏輯
             const overflowTime = minutesToTime(endMin); 
             
             shadows.push({
                 ...item,
-                id: `shadow-${item.id}`, // 使用特殊 ID 避免衝突
-                isShadow: true,          // 標記為影子卡片
-                time: overflowTime,      // 顯示計算後的結束時間
-                duration: 0,             // 停留時間設為 0
-                cost: 0,                 // 費用設為 0 (避免重複計算)
+                id: `shadow-${item.id}`, 
+                isShadow: true,          
+                time: overflowTime,      
+                duration: 0,             
+                cost: 0,                 
                 originalDayIdx: dayIdx - 1,
                 originalId: item.id
             });
@@ -742,7 +691,6 @@ const TripPlanner = ({
   const getCurrentList = () => {
     if (viewMode === 'itinerary') {
         const realItems = itineraries[activeDay] || [];
-        // 動態合併真實行程與影子行程
         const shadowItems = getShadowItems(activeDay, itineraries);
         return sortItemsByTime([...realItems, ...shadowItems]);
     }
@@ -756,7 +704,6 @@ const TripPlanner = ({
 
   const updateCurrentList = (newList) => {
     if (viewMode === 'itinerary') {
-        // 過濾掉影子卡片，只儲存真實行程
         const realItemsOnly = newList.filter(item => !item.isShadow);
         setItineraries({ ...itineraries, [activeDay]: realItemsOnly });
     }
@@ -780,7 +727,6 @@ const TripPlanner = ({
       if (categoryManagerTab === 'itinerary') setItineraryCategories(list); else setExpenseCategories(list);
     } else {
       const list = [...getCurrentList()];
-      // 禁止拖曳影子卡片
       if (list[dragItem.current]?.isShadow) return;
       
       const dragContent = list[dragItem.current];
@@ -798,7 +744,6 @@ const TripPlanner = ({
     const currentList = getCurrentList();
     const itemToMove = currentList[dragItem.current];
     
-    // 禁止移動影子卡片
     if (itemToMove.isShadow) {
         alert("無法移動延續行程卡片，請回到原始日期修改。");
         dragItem.current = null;
@@ -808,7 +753,6 @@ const TripPlanner = ({
     const newCurrentList = [...currentList];
     newCurrentList.splice(dragItem.current, 1);
     
-    // 只更新真實列表
     const realItems = newCurrentList.filter(i => !i.isShadow);
     
     const targetList = [...(itineraries[targetDayIdx] || [])];
@@ -823,7 +767,6 @@ const TripPlanner = ({
     if (viewMode === 'itinerary') {
       const currentList = getCurrentList();
       let defaultTime = '09:00';
-      // 尋找最後一個非影子的真實項目來計算時間
       const lastRealItem = [...currentList].reverse().find(i => !i.isShadow);
       
       if (lastRealItem) {
@@ -841,10 +784,8 @@ const TripPlanner = ({
 
   const openEditModal = (item) => {
     if (item.isShadow) {
-        // 如果點擊影子卡片，提示使用者
         if (window.confirm("這是從前一天延續的行程，是否回到前一天進行編輯？")) {
             setActiveDay(item.originalDayIdx);
-            // 可以在這裡做一些 highlight 的邏輯，暫時先切換日期
         }
         return;
     }
@@ -907,7 +848,6 @@ const TripPlanner = ({
     if (viewMode === 'itinerary') newItem.duration = parseInt(formData.duration) || 0;
     
     let list = viewMode === 'expenses' ? [...expenses] : [...getCurrentList()];
-    // 確保只操作真實項目，排除影子項目
     list = list.filter(i => !i.isShadow);
     
     if (editingItem) {
@@ -918,7 +858,6 @@ const TripPlanner = ({
     
     if (viewMode === 'itinerary') {
         list = sortItemsByTime(list);
-        // 移除先前的自動寫入下一日邏輯，改由 getShadowItems 動態計算
     }
     
     if (viewMode === 'expenses') setExpenses(list); else updateCurrentList(list);
@@ -926,7 +865,6 @@ const TripPlanner = ({
   };
 
   const handleDeleteItem = async (id) => { 
-      // 1. Find item to delete
       const sourceList = viewMode === 'expenses' ? expenses : getCurrentList();
       const itemToDelete = sourceList.find(i => i.id === id);
 
@@ -935,11 +873,9 @@ const TripPlanner = ({
           return;
       }
 
-      // 2. Optimistic UI delete
       if (viewMode === 'expenses') setExpenses(expenses.filter(item => item.id !== id)); 
       else updateCurrentList(getCurrentList().filter(item => item.id !== id)); 
 
-      // 3. Background delete image from Drive
       if (itemToDelete?.image?.id && googleUser && gapiInited) {
           try {
               await window.gapi.client.drive.files.delete({ fileId: itemToDelete.image.id });
@@ -1008,7 +944,7 @@ const TripPlanner = ({
       setIsSettingsOpen(true);
   };
 
-  // --- Statistics Logic (Enhanced) ---
+  // --- Statistics Logic ---
   const statisticsData = useMemo(() => {
     const personStats = {};
     companions.forEach(c => { personStats[c] = { paid: 0, share: 0, balance: 0 }; });
@@ -1017,7 +953,6 @@ const TripPlanner = ({
     let personalExpensesList = [];
     const dailyTotals = {}; 
 
-    // Filter source expenses
     const filteredSourceExpenses = expenses.filter(exp => {
         let matchesDay = true;
         if (statsDayFilter !== 'all') {
@@ -1038,7 +973,6 @@ const TripPlanner = ({
       if (!categoryStats.real[category]) categoryStats.real[category] = 0;
       categoryStats.real[category] += amount;
 
-      // Accumulate Daily Totals
       const dateKey = exp.date;
       if (!dailyTotals[dateKey]) dailyTotals[dateKey] = 0;
       dailyTotals[dateKey] += amount;
@@ -1109,7 +1043,6 @@ const TripPlanner = ({
        const categoryDef = expenseCategories.find(c => c.id === currentCategory) || { label: '未分類', icon: 'Coins' };
        const twd = Math.round((exp.cost || 0) * currencySettings.exchangeRate);
        
-       // --- 修正：根據選擇的幣別顯示主金額 ---
        let displayMain, displaySub;
        if (exp.costType === 'TWD') {
            displayMain = `TWD ${formatMoney(twd)}`;
@@ -1159,7 +1092,6 @@ const TripPlanner = ({
     });
   };
 
-  // 準備圖表資料
   const getCategoryChartData = () => {
     const data = statsMode === 'real' ? statisticsData.categoryStats.real : statisticsData.categoryStats.personal;
     const chartData = Object.entries(data)
@@ -1279,7 +1211,6 @@ const TripPlanner = ({
           </div>
         ) : viewMode === 'statistics' ? (
           <div className="space-y-6 animate-in fade-in duration-500">
-            {/* Filter Section - Optimized */}
             <div className="flex flex-wrap gap-2 items-center">
                 <CompositeFilter 
                     dateValue={statsDayFilter}
@@ -1308,7 +1239,6 @@ const TripPlanner = ({
                 )}
             </div>
 
-            {/* People Filter (View Only) */}
             <div className="overflow-x-auto pb-2 scrollbar-hide -mx-2 px-2">
               <div className="flex gap-3 min-w-max">
                 <div onClick={() => setStatsPersonFilter('all')} className={`border rounded-xl p-3 shadow-sm min-w-[4rem] flex flex-col items-center justify-center cursor-pointer transition-all ${statsPersonFilter === 'all' ? 'bg-[#3A3A3A] border-[#3A3A3A] text-white' : `${theme.card} ${theme.border} text-[#3A3A3A] ${theme.hover}`}`}>
@@ -1319,8 +1249,7 @@ const TripPlanner = ({
                   const amount = statsMode === 'real' ? stat.paid : stat.share;
                   return (
                     <div key={person} onClick={() => setStatsPersonFilter(statsPersonFilter === person ? 'all' : person)} className={`border rounded-xl p-3 shadow-sm min-w-[8rem] flex flex-col items-center cursor-pointer transition-all ${statsPersonFilter === person ? `${theme.hover} ${theme.primaryBorder} ring-1 ring-[#5F6F52]` : `${theme.card} ${theme.border} ${theme.hover}`}`}>
-                       {/* 優化：改用 PayerAvatar 風格或直接套用固定文字顏色，避免受主題色影響 */}
-                       <div className={`w-10 h-10 rounded-full ${getAvatarColor(idx)} flex items-center justify-center text-white text-sm font-bold font-serif mb-2`}>{person.charAt(0)}</div>
+                       <div className={`w-10 h-10 rounded-full ${getAvatarColor(idx)} flex items-center justify-center text-white text-sm font-bold font-serif mb-2`}>{person.charAt(0).toUpperCase()}</div>
                        <div className="text-xs font-bold text-[#3A3A3A] mb-1">{person}</div>
                        <div className={`text-sm font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.symbol} {formatMoney(amount)}</div>
                     </div>
@@ -1329,7 +1258,6 @@ const TripPlanner = ({
               </div>
             </div>
 
-            {/* Settlement Suggestion - Enhanced with Avatars */}
             <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
               <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2"><ArrowLeftRight size={16}/> 結算建議 (依篩選)</h3>
               <div className="space-y-3">
@@ -1354,7 +1282,6 @@ const TripPlanner = ({
               </div>
             </div>
 
-            {/* Daily Breakdown */}
             {statisticsData.sortedDailyTotals.length > 0 && (
                 <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
                     <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2"><Calendar size={16}/> 每日消費明細</h3>
@@ -1369,7 +1296,6 @@ const TripPlanner = ({
                 </div>
             )}
 
-            {/* Category Chart - New Feature */}
             {categoryChartData.length > 0 && (
                 <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
                     <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2"><PieChart size={16}/> 類別消費統計</h3>
@@ -1402,7 +1328,6 @@ const TripPlanner = ({
           </div>
         ) : (
           <div className="space-y-3 relative">
-            {/* Itinerary / Expenses List Render */}
             {viewMode === 'itinerary' && <div className={`absolute left-[4.5rem] top-4 bottom-4 w-px ${theme.border} -z-10`}></div>}
             {getCurrentList().map((item, index) => {
               if (viewMode === 'expenses') {
@@ -1410,7 +1335,6 @@ const TripPlanner = ({
                 const Icon = getIconComponent(categoryDef.icon);
                 const twd = Math.round(item.cost * currencySettings.exchangeRate);
                 
-                // --- 修正：根據選擇的幣別顯示主金額 ---
                 let mainAmount, subAmount;
                 if (item.costType === 'TWD') {
                     mainAmount = `TWD ${formatMoney(twd)}`;
@@ -1419,7 +1343,6 @@ const TripPlanner = ({
                     mainAmount = `${item.currency} ${formatMoney(item.cost)}`;
                     subAmount = `(NT$ ${formatMoney(twd)})`;
                 }
-                // ------------------------------------
                 
                 let groupHeader = null;
                 const prevItem = getCurrentList()[index - 1];
@@ -1460,24 +1383,19 @@ const TripPlanner = ({
                 const endTimeStr = minutesToTime(timeToMinutes(item.time) + item.duration);
                 let gapComp = null;
                 
-                // 排除影子卡片參與 gap 計算 (只針對真實行程計算間距)
-                // 這裡我們取下一個 "真實" 項目或影子項目皆可，視需求而定
-                // 但為了簡單起見，我們計算視覺上的間距
                 if (index < getCurrentList().length - 1) {
                   const nextItem = getCurrentList()[index + 1];
                   const diff = timeToMinutes(nextItem.time) - (timeToMinutes(item.time) + item.duration);
                   
-                  // 如果是影子卡片，不顯示移動時間 (因為 duration 為 0，且通常接在最前面)
                   if (diff !== 0 && !item.isShadow && !nextItem.isShadow) { 
                       gapComp = (<div className="pl-[4.5rem] py-3 flex items-center select-none"><div className={`text-[10px] px-3 py-0.5 rounded-full border flex items-center gap-1.5 font-medium ${diff < 0 ? `${theme.danger} ${theme.dangerBg} border-[#FFD6D6]` : `${theme.subText} ${theme.hover} ${theme.border}`}`}><span className="opacity-50">▼</span> {diff < 0 ? '時間重疊' : `移動: ${formatDurationDisplay(diff)}`}</div></div>); 
                   }
                 }
 
-                // --- Shadow Card Style ---
                 const isShadow = item.isShadow;
                 const cardStyle = isShadow 
-                    ? `bg-orange-50/50 border-l-4 border-orange-300 shadow-sm opacity-90` // 影子樣式
-                    : `${theme.card} border ${theme.border} shadow-[0_2px_10px_-6px_rgba(0,0,0,0.05)] hover:shadow-md hover:border-[#D6D2C4] hover:translate-x-0.5`; // 正常樣式
+                    ? `bg-orange-50/50 border-l-4 border-orange-300 shadow-sm opacity-90` 
+                    : `${theme.card} border ${theme.border} shadow-[0_2px_10px_-6px_rgba(0,0,0,0.05)] hover:shadow-md hover:border-[#D6D2C4] hover:translate-x-0.5`;
 
                 return (
                   <React.Fragment key={item.id}>
@@ -1503,7 +1421,6 @@ const TripPlanner = ({
                                 </span>
                             </div>
                             
-                            {/* Actions: Hide for Shadow Cards */}
                             {!isShadow && (
                                 <div className="flex gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
                                     <button onClick={() => updateCurrentList([...getCurrentList(), {...item, id: Date.now(), title: `${item.title} (Copy)`}])} className={`p-1.5 text-[#999999] hover:${theme.primary} ${theme.hover} rounded`}><Copy size={14} /></button>
@@ -1547,7 +1464,6 @@ const TripPlanner = ({
                   </React.Fragment>
                 );
               }
-              // ... Checklist Rendering ...
               return (
                 <div key={item.id} className="draggable-item group relative" draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd}>
                   <div onClick={() => toggleComplete(item.id)} className={`${theme.card} rounded-xl p-4 border ${theme.border} shadow-sm transition-all flex gap-4 items-start cursor-pointer ${item.completed ? 'opacity-50 grayscale' : ''}`}>
@@ -1580,8 +1496,6 @@ const TripPlanner = ({
 
       <BottomNav theme={theme} viewMode={viewMode} setViewMode={setViewMode} openAddModal={openAddModal} />
 
-      {/* Modals rendered at the end to ensure they are on top */}
-      {/* Category Edit Modal */}
       {isCategoryEditModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
           <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border} animate-in zoom-in-95`}>
@@ -1599,7 +1513,6 @@ const TripPlanner = ({
         </div>
       )}
 
-      {/* Item Add/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
           <div className={`bg-[#FDFCFB] w-full max-w-md rounded-xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 border ${theme.border}`}>
@@ -1609,7 +1522,6 @@ const TripPlanner = ({
                 {viewMode === 'itinerary' && (
                   <>
                     <div className="grid grid-cols-5 gap-1 mb-2">{itineraryCategories.map((cat) => { const CatIcon = getIconComponent(cat.icon); return (<button key={cat.id} type="button" onClick={() => setFormData({...formData, type: cat.id})} className={`py-2 px-0.5 rounded-lg border text-xs font-bold transition-all flex flex-col items-center gap-1 ${formData.type === cat.id ? `${theme.primaryBorder} ${theme.primaryBg} text-white` : `${theme.border} bg-white text-[#888] ${theme.hover}`}`}><CatIcon size={16} /><span className="text-[10px] scale-90 truncate w-full text-center">{cat.label}</span></button>) })}</div>
-                    {/* Time & Duration: Responsive Layout Update */}
                     <div className="flex flex-wrap gap-4 items-end">
                       <div className="flex-1 min-w-[120px]"><label className="block text-xs font-bold text-[#888] mb-1">開始時間</label><input type="time" value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder} h-10`} /></div>
                       <div className="flex-1 min-w-[140px] flex gap-2 items-end">
@@ -1656,7 +1568,6 @@ const TripPlanner = ({
                   </>
                 )}
                 
-                {/* --- Image Upload Section --- */}
                 <div className={`p-4 rounded-lg bg-[#F9F9F9] border ${theme.border}`}>
                     <label className="block text-xs font-bold text-[#888] mb-2 flex items-center gap-1"><ImageIcon size={14}/> 照片 (Google Drive)</label>
                     {formData.image ? (
@@ -1692,7 +1603,6 @@ const TripPlanner = ({
         </div>
       )}
 
-      {/* Settings Modal */}
       {isSettingsOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
           <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border} animate-in zoom-in-95`}>
@@ -1710,7 +1620,6 @@ const TripPlanner = ({
         </div>
       )}
 
-      {/* Currency Modal */}
       {isCurrencyModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
           <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border}`}>
@@ -1726,7 +1635,6 @@ const TripPlanner = ({
         </div>
       )}
 
-      {/* Companion Modal */}
       {isCompanionModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
           <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border}`}>
@@ -1745,7 +1653,6 @@ const TripPlanner = ({
         </div>
       )}
 
-      {/* Cloud Load Modal (Added) */}
       {isCloudLoadModalOpen && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
           <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border} animate-in zoom-in-95`}>
