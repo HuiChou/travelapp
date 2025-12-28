@@ -167,49 +167,8 @@ const TripPlanner = ({
       }
   };
 
-  useEffect(() => {
-      if (!googleUser || !gapiInited) return;
-
-      const timer = setTimeout(() => {
-          handleSaveToGoogleSheet(true); 
-      }, 5000); 
-
-      return () => clearTimeout(timer);
-  }, [tripSettings, itineraries, expenses, packingList, shoppingList, foodList, sightseeingList, googleUser, gapiInited, googleDriveFileId]);
-
-  const handleSaveToGoogleSheet = async (isSilent = false) => {
-      if (!googleUser || !gapiInited) {
-          if (!isSilent) alert("請先在首頁登入 Google 帳號。");
-          return;
-      }
-      
-      if (!isSilent) setIsSyncing(true);
-      else setIsAutoSaving(true);
-
-      try {
-          const title = `TravelApp_${tripSettings.title}`;
-          // Dummy update to simulate save completion
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          if (!isSilent) alert(`同步成功！\n檔案：${title}\n(已覆蓋更新)`);
-
-      } catch (error) {
-          console.error("Error saving to Google Sheets:", error);
-      } finally {
-          setIsSyncing(false);
-          setIsAutoSaving(false);
-      }
-  };
-
-  const handleExportToPDF = () => {
-    try {
-      const title = tripSettings.title || "My Trip";
-      alert("PDF 匯出功能 (模擬)");
-    } catch (err) {
-      console.error("PDF Export Error:", err);
-    }
-  };
-
+  // --- Auto Save Effect ---
+  // 注意：這裡我們使用本地 state 更新 onSaveData，但不自動觸發雲端覆蓋，避免頻繁 API 呼叫
   useEffect(() => {
     onSaveData({
       tripSettings,
@@ -228,6 +187,169 @@ const TripPlanner = ({
       googleDriveFileId: googleDriveFileId
     });
   }, [tripSettings, companions, currencySettings, itineraries, packingList, shoppingList, foodList, sightseeingList, expenses, itineraryCategories, expenseCategories, googleDriveFileId]);
+
+  // --- REAL Cloud Sync Logic ---
+  const handleSaveToGoogleSheet = async (isSilent = false) => {
+      if (!googleUser || !gapiInited) {
+          if (!isSilent) alert("請先在首頁登入 Google 帳號。");
+          return;
+      }
+      
+      if (!isSilent) setIsSyncing(true);
+      else setIsAutoSaving(true);
+
+      try {
+          // 1. 準備資料 (Prepare Data) - 與 Excel 匯出邏輯保持一致
+          
+          // A. 概覽 (Overview)
+          const overviewData = [
+              ["專案概覽", "內容"],
+              ["專案標題", tripSettings.title],
+              ["出發日期", tripSettings.startDate],
+              ["回國日期", tripSettings.endDate],
+              ["總天數", tripSettings.days],
+              ["旅行國家", currencySettings.selectedCountry.name],
+              ["貨幣代碼", currencySettings.selectedCountry.currency],
+              ["匯率 (1外幣 = TWD)", currencySettings.exchangeRate],
+              ["旅行人員", companions.join(", ")]
+          ];
+
+          // B. 行程 (Itinerary)
+          const itinHeader = ["天數", "時間", "停留(分)", "類別", "標題", "地點", "預算", "備註"];
+          const itinRows = [];
+          Object.keys(itineraries).sort((a,b)=>a-b).forEach(dayIndex => {
+              const items = itineraries[dayIndex] || [];
+              items.forEach(item => {
+                  const cat = itineraryCategories.find(c => c.id === item.type);
+                  itinRows.push([
+                      `Day ${parseInt(dayIndex) + 1}`,
+                      item.time,
+                      item.duration,
+                      cat ? cat.label : item.type,
+                      item.title,
+                      item.location,
+                      item.cost,
+                      item.notes
+                  ]);
+              });
+          });
+          const itinData = [itinHeader, ...itinRows];
+
+          // C. 費用 (Expenses)
+          const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節"];
+          const expRows = expenses.map(item => {
+              const cat = expenseCategories.find(c => c.id === item.category);
+              let splitText = "";
+              if (item.details && item.details.length > 0) {
+                  splitText = item.details.map(d => {
+                    const target = d.target === 'ALL' ? '全員' : (d.target === 'EACH' ? '各付' : d.target);
+                    return `${target}:${d.amount}`; 
+                  }).join(", ");
+              } else {
+                  splitText = item.shares ? `分攤: ${item.shares.join(", ")}` : '';
+              }
+              return [
+                  item.date,
+                  item.region,
+                  cat ? cat.label : item.category,
+                  item.title,
+                  item.location,
+                  item.payer,
+                  item.cost,
+                  splitText
+              ];
+          });
+          const expData = [expHeader, ...expRows];
+
+          // D. 類別 (Categories)
+          const catHeader = ["類型", "ID", "名稱", "圖示", "顏色"];
+          const catRows = [];
+          itineraryCategories.forEach(c => catRows.push(["行程", c.id, c.label, c.icon, c.color]));
+          expenseCategories.forEach(c => catRows.push(["費用", c.id, c.label, c.icon, c.color || '']));
+          const catData = [catHeader, ...catRows];
+
+          // E. 清單 (Checklists)
+          const packingHeader = ["物品", "狀態"];
+          const packingRows = packingList.map(i => [i.title, i.completed ? "已完成" : "未完成"]);
+          const packingData = [packingHeader, ...packingRows];
+
+          const shopHeader = ["地區", "物品", "地點", "預算", "狀態", "備註"];
+          const formatChecklist = (list, doneText, undoText) => {
+              return list.map(i => [i.region, i.title, i.location, i.cost, i.completed ? doneText : undoText, i.notes]);
+          };
+          const shoppingData = [shopHeader, ...formatChecklist(shoppingList, "已購買", "未購買")];
+          const foodData = [shopHeader, ...formatChecklist(foodList, "已吃", "未吃")];
+          const sightseeingData = [shopHeader, ...formatChecklist(sightseeingList, "已去", "未去")];
+
+          // 2. 檢查檔案 ID (Check File ID)
+          let targetFileId = googleDriveFileId;
+          const sheetTitles = ["專案概覽", "行程表", "費用", "管理類別", "行李", "購物", "美食", "景點"];
+
+          if (!targetFileId) {
+              // 建立新檔案
+              const createRes = await window.gapi.client.sheets.spreadsheets.create({
+                  resource: {
+                      properties: { title: `TravelApp_${tripSettings.title}` },
+                      sheets: sheetTitles.map(t => ({ properties: { title: t } }))
+                  }
+              });
+              targetFileId = createRes.result.spreadsheetId;
+              setGoogleDriveFileId(targetFileId);
+              
+              // 立即更新上層狀態以保存 ID
+              onSaveData({ 
+                tripSettings, companions, currencySettings, itineraries, 
+                expenses, packingList, shoppingList, foodList, sightseeingList,
+                categories: { itinerary: itineraryCategories, expense: expenseCategories },
+                googleDriveFileId: targetFileId 
+              });
+          }
+
+          // 3. 清除舊資料與寫入新資料 (Batch Clear & Update)
+          // 為了確保不會有舊資料殘留，先清除內容
+          await window.gapi.client.sheets.spreadsheets.values.batchClear({
+              spreadsheetId: targetFileId,
+              ranges: sheetTitles.map(t => `'${t}'!A:Z`)
+          });
+
+          // 寫入
+          await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
+              spreadsheetId: targetFileId,
+              resource: {
+                  valueInputOption: "USER_ENTERED",
+                  data: [
+                      { range: "'專案概覽'!A1", values: overviewData },
+                      { range: "'行程表'!A1", values: itinData },
+                      { range: "'費用'!A1", values: expData },
+                      { range: "'管理類別'!A1", values: catData },
+                      { range: "'行李'!A1", values: packingData },
+                      { range: "'購物'!A1", values: shoppingData },
+                      { range: "'美食'!A1", values: foodData },
+                      { range: "'景點'!A1", values: sightseeingData },
+                  ]
+              }
+          });
+
+          if (!isSilent) alert(`同步成功！\n檔案：${tripSettings.title}\n(已覆蓋更新雲端檔案)`);
+
+      } catch (error) {
+          console.error("Error saving to Google Sheets:", error);
+          if (!isSilent) alert("同步失敗，請檢查網路或權限。\n\n錯誤代碼：" + (error.result?.error?.message || error.message));
+      } finally {
+          setIsSyncing(false);
+          setIsAutoSaving(false);
+      }
+  };
+
+  const handleExportToPDF = () => {
+    try {
+      const title = tripSettings.title || "My Trip";
+      alert("PDF 匯出功能 (模擬)\n提示：您可以使用瀏覽器的 '列印' 功能並選擇 '另存為 PDF'。");
+      window.print();
+    } catch (err) {
+      console.error("PDF Export Error:", err);
+    }
+  };
 
   // --- Google Drive Image Helpers ---
   const ensureTravelAppFolder = async () => {
