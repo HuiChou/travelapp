@@ -19,7 +19,7 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
   };
 
   return (
-    <div className={`min-h-screen ${theme.bg} text-[#464646] font-serif ${theme.selection} flex flex-col`}>
+    <div className={`min-h-screen ${theme.bg} text-[#464646] font-serif ${theme.selection} flex flex-col overflow-x-hidden`}>
       <nav className={`w-full px-4 md:px-8 py-6 flex justify-between items-center border-b ${theme.border}/50`}>
         <div className="flex items-center gap-2"><div className={`w-4 h-4 ${theme.primaryBg} rounded-full opacity-80`}></div><span className={`text-xl tracking-widest font-bold ${theme.primary}`}> 𝐓𝐑𝐀𝐕𝐄𝐋 </span></div>
         <div className="flex items-center gap-3">
@@ -28,10 +28,10 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
                   onClick={onImportCloud} 
                   disabled={isImporting}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-[#E6E2D3] text-xs font-bold text-[#5F6F52] hover:bg-[#F2F0EB] transition-colors`}
-                  title="掃描 Google Drive 中所有包含 TravelApp_ 的試算表"
+                  title="掃描 Google Drive 中開頭為 TravelApp_ 的檔案"
                 >
                     {isImporting ? <Loader2 size={14} className="animate-spin"/> : <CloudDownload size={14} />}
-                    {isImporting ? "正在掃描雲端..." : "匯入 TravelApp 雲端專案"}
+                    {isImporting ? "掃描匯入中..." : "雲端掃描匯入"}
                 </button>
             )}
             {googleUser ? (
@@ -114,3 +114,4 @@ const TravelHome = ({ projects, allProjectsData, onAddProject, onDeleteProject, 
 };
 
 export default TravelHome;
+

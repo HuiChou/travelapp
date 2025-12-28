@@ -997,7 +997,7 @@ const TripPlanner = ({
   const { chartData: categoryChartData, maxAmount: maxCategoryAmount } = getCategoryChartData();
 
   return (
-    <div className={`min-h-screen ${theme.bg} text-[#464646] font-sans pb-32 ${theme.selection}`}>
+    <div className={`min-h-screen ${theme.bg} text-[#464646] font-sans pb-32 ${theme.selection} overflow-x-hidden`}>
       <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx, .xls" className="hidden" />
       <header className={`sticky top-0 z-[60] ${theme.bg}/95 backdrop-blur-md border-b ${theme.border}`}>
         <div className="max-w-3xl mx-auto px-4 py-3 md:px-6 md:py-4">
@@ -1418,11 +1418,12 @@ const TripPlanner = ({
                 {viewMode === 'itinerary' && (
                   <>
                     <div className="grid grid-cols-5 gap-1 mb-2">{itineraryCategories.map((cat) => { const CatIcon = getIconComponent(cat.icon); return (<button key={cat.id} type="button" onClick={() => setFormData({...formData, type: cat.id})} className={`py-2 px-0.5 rounded-lg border text-xs font-bold transition-all flex flex-col items-center gap-1 ${formData.type === cat.id ? `${theme.primaryBorder} ${theme.primaryBg} text-white` : `${theme.border} bg-white text-[#888] ${theme.hover}`}`}><CatIcon size={16} /><span className="text-[10px] scale-90 truncate w-full text-center">{cat.label}</span></button>) })}</div>
-                    <div className="flex gap-4 items-end">
-                      <div className="w-[130px]"><label className="block text-xs font-bold text-[#888] mb-1">開始時間</label><input type="time" value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder} h-10`} /></div>
-                      <div className="flex flex-1 gap-2 items-end">
-                        <div className="w-[130px]"><label className="block text-xs font-bold text-[#888] mb-1">停留 (分)</label><input type="number" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="numeric" value={formData.duration === 0 ? '' : formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder} h-10`} /></div>
-                        <div className="flex flex-col gap-1 pb-0.5"><div className="flex gap-1"><button type="button" onClick={() => setFormData({...formData, duration: 30})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[3rem] text-center h-[18px] flex items-center justify-center`}>30分</button><button type="button" onClick={() => setFormData({...formData, duration: 60})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[3rem] text-center h-[18px] flex items-center justify-center`}>60分</button></div><div className="flex gap-1"><button type="button" onClick={() => setFormData({...formData, duration: 90})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[3rem] text-center h-[18px] flex items-center justify-center`}>90分</button><button type="button" onClick={() => setFormData({...formData, duration: 120})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[3rem] text-center h-[18px] flex items-center justify-center`}>120分</button></div></div>
+                    {/* Time & Duration: Responsive Layout Update */}
+                    <div className="flex flex-wrap gap-4 items-end">
+                      <div className="flex-1 min-w-[120px]"><label className="block text-xs font-bold text-[#888] mb-1">開始時間</label><input type="time" value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder} h-10`} /></div>
+                      <div className="flex-1 min-w-[140px] flex gap-2 items-end">
+                        <div className="flex-1"><label className="block text-xs font-bold text-[#888] mb-1">停留 (分)</label><input type="number" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="numeric" value={formData.duration === 0 ? '' : formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder} h-10`} /></div>
+                        <div className="flex flex-col gap-1 pb-0.5"><div className="flex gap-1"><button type="button" onClick={() => setFormData({...formData, duration: 30})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[2.5rem] text-center h-[18px] flex items-center justify-center`}>30</button><button type="button" onClick={() => setFormData({...formData, duration: 60})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[2.5rem] text-center h-[18px] flex items-center justify-center`}>60</button></div><div className="flex gap-1"><button type="button" onClick={() => setFormData({...formData, duration: 90})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[2.5rem] text-center h-[18px] flex items-center justify-center`}>90</button><button type="button" onClick={() => setFormData({...formData, duration: 120})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[2.5rem] text-center h-[18px] flex items-center justify-center`}>120</button></div></div>
                       </div>
                     </div>
                   </>
@@ -1608,3 +1609,5 @@ const TripPlanner = ({
 };
 
 export default TripPlanner;
+
+
