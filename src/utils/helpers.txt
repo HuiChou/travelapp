@@ -207,13 +207,7 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   const days = calculateDaysDiff(startDate, endDate);
   
   const companionsStr = ovMap["旅行人員"] || "Me";
-  
-  // FIX 1: 過濾保留字 (Filter out reserved keywords)
-  // 防止「均攤」、「各付」等關鍵字因為舊檔案錯誤而被解析為真實人員
-  const reservedKeywords = ['均攤', '各付', '全員', 'ALL', 'EACH'];
-  const newCompanions = companionsStr.split(",")
-    .map(s => s.trim())
-    .filter(s => s && !reservedKeywords.includes(s));
+  const newCompanions = companionsStr.split(",").map(s => s.trim()).filter(s => s);
   
   const countryName = ovMap["旅行國家"];
   const currencyCode = ovMap["貨幣代碼"];
@@ -353,13 +347,14 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
                    details = parts.map((p, idx) => {
                        const [name, amt] = p.split(":").map(x => x.trim());
                        
-                       // FIX 2: 正確解析「均攤」與「各付」 (Map Chinese keywords to Logic IDs)
+                       // UPDATED: Handle "各付" or "EACH" -> 'EACH'
                        let targetName = name;
-                       // 新增: 明確將 '均攤' 轉回 'ALL'，防止它被識別為人名
-                       if (name === '全員' || name === '均攤' || name === 'ALL') targetName = 'ALL';
+                       if (name === '全員') targetName = 'ALL';
                        else if (name === '各付' || name === 'EACH') targetName = 'EACH';
                        
                        // Only add to shares list if it's a specific person (not special keywords)
+                       // Or we can just store the targetName. 
+                       // For display logic 'shares' array usually contains names.
                        if (targetName !== 'ALL' && targetName !== 'EACH' && !shares.includes(targetName)) {
                            shares.push(targetName);
                        }
@@ -428,4 +423,3 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
     googleDriveFileId: fileId
   };
 };
-
