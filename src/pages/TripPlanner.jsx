@@ -25,7 +25,6 @@ import {
     parseProjectDataFromGAPI 
 } from '../utils/helpers';
 
-// 引入 CompositeFilter
 import { BottomNav, PayerAvatar, AvatarSelect, CategorySelect, CompositeFilter } from '../components/UIComponents';
 
 const TripPlanner = ({ 
@@ -108,12 +107,6 @@ const TripPlanner = ({
           
           const files = response.result.files;
           setCloudFiles(files);
-          
-          if (files && files.length > 0) {
-             if (tripSettings.title === 'Temp' || tripSettings.title === 'My Trip') {
-                 setIsCloudLoadModalOpen(true);
-             }
-          }
       } catch (error) {
           console.error("Error fetching cloud files:", error);
       } finally {
@@ -127,7 +120,7 @@ const TripPlanner = ({
         const ranges = [
             "專案概覽!A:B", 
             "行程表!A:H", 
-            "費用!A:H", 
+            "費用!A:I", 
             "管理類別!A:E", 
             "行李!A:B", 
             "購物!A:F", 
@@ -142,6 +135,24 @@ const TripPlanner = ({
         });
 
         const parsedData = parseProjectDataFromGAPI(fileId, fileName, response.result.valueRanges);
+
+        // --- 補丁：手動讀取 costType (欄位 I / Index 8) ---
+        const expenseRange = response.result.valueRanges.find(r => r.range.includes("費用"));
+        if (expenseRange && expenseRange.values && parsedData.expenses) {
+            const rawRows = expenseRange.values.slice(1); // 去除標題
+            const validRawRows = rawRows.filter(row => row[0]); // 僅保留有效列
+            
+            // 安全地回填 costType
+            if (validRawRows.length > 0) {
+                parsedData.expenses = parsedData.expenses.map((exp, i) => {
+                    if (i < validRawRows.length) {
+                        return { ...exp, costType: validRawRows[i][8] || 'FOREIGN' };
+                    }
+                    return exp;
+                });
+            }
+        }
+        // -----------------------------
 
         setTripSettings(parsedData.tripSettings);
         setCompanions(parsedData.companions);
@@ -167,28 +178,16 @@ const TripPlanner = ({
       }
   };
 
-  // --- Auto Save Effect ---
-  // 注意：這裡我們使用本地 state 更新 onSaveData，但不自動觸發雲端覆蓋，避免頻繁 API 呼叫
   useEffect(() => {
-    onSaveData({
-      tripSettings,
-      companions,
-      currencySettings,
-      itineraries,
-      packingList,
-      shoppingList,
-      foodList,
-      sightseeingList,
-      expenses,
-      categories: {
-        itinerary: itineraryCategories,
-        expense: expenseCategories
-      },
-      googleDriveFileId: googleDriveFileId
-    });
-  }, [tripSettings, companions, currencySettings, itineraries, packingList, shoppingList, foodList, sightseeingList, expenses, itineraryCategories, expenseCategories, googleDriveFileId]);
+      if (!googleUser || !gapiInited) return;
 
-  // --- REAL Cloud Sync Logic ---
+      const timer = setTimeout(() => {
+          handleSaveToGoogleSheet(true); 
+      }, 30000); // Auto save every 30s instead of 5s to reduce API calls
+
+      return () => clearTimeout(timer);
+  }, [tripSettings, itineraries, expenses, packingList, shoppingList, foodList, sightseeingList, googleUser, gapiInited, googleDriveFileId]);
+
   const handleSaveToGoogleSheet = async (isSilent = false) => {
       if (!googleUser || !gapiInited) {
           if (!isSilent) alert("請先在首頁登入 Google 帳號。");
@@ -199,10 +198,9 @@ const TripPlanner = ({
       else setIsAutoSaving(true);
 
       try {
-          // 1. 準備資料 (Prepare Data) - 與 Excel 匯出邏輯保持一致
-          
-          // A. 概覽 (Overview)
-          const overviewData = [
+          // 1. 準備要寫入的資料 (Data Preparation)
+          // A. 專案概覽
+          const overviewValues = [
               ["專案概覽", "內容"],
               ["專案標題", tripSettings.title],
               ["出發日期", tripSettings.startDate],
@@ -214,12 +212,13 @@ const TripPlanner = ({
               ["旅行人員", companions.join(", ")]
           ];
 
-          // B. 行程 (Itinerary)
+          // B. 行程表
           const itinHeader = ["天數", "時間", "停留(分)", "類別", "標題", "地點", "預算", "備註"];
           const itinRows = [];
           Object.keys(itineraries).sort((a,b)=>a-b).forEach(dayIndex => {
               const items = itineraries[dayIndex] || [];
               items.forEach(item => {
+                  if (item.isShadow) return; // 跳過影子行程，不寫入檔案
                   const cat = itineraryCategories.find(c => c.id === item.type);
                   itinRows.push([
                       `Day ${parseInt(dayIndex) + 1}`,
@@ -233,10 +232,10 @@ const TripPlanner = ({
                   ]);
               });
           });
-          const itinData = [itinHeader, ...itinRows];
+          const itinValues = [itinHeader, ...itinRows];
 
-          // C. 費用 (Expenses)
-          const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節"];
+          // C. 費用 (含幣別類型)
+          const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節", "幣別類型"];
           const expRows = expenses.map(item => {
               const cat = expenseCategories.find(c => c.id === item.category);
               let splitText = "";
@@ -256,85 +255,90 @@ const TripPlanner = ({
                   item.location,
                   item.payer,
                   item.cost,
-                  splitText
+                  splitText,
+                  item.costType || 'FOREIGN'
               ];
           });
-          const expData = [expHeader, ...expRows];
+          const expValues = [expHeader, ...expRows];
 
-          // D. 類別 (Categories)
+          // D. 管理類別
           const catHeader = ["類型", "ID", "名稱", "圖示", "顏色"];
           const catRows = [];
           itineraryCategories.forEach(c => catRows.push(["行程", c.id, c.label, c.icon, c.color]));
           expenseCategories.forEach(c => catRows.push(["費用", c.id, c.label, c.icon, c.color || '']));
-          const catData = [catHeader, ...catRows];
+          const catValues = [catHeader, ...catRows];
 
-          // E. 清單 (Checklists)
+          // E. 各式清單
           const packingHeader = ["物品", "狀態"];
           const packingRows = packingList.map(i => [i.title, i.completed ? "已完成" : "未完成"]);
-          const packingData = [packingHeader, ...packingRows];
+          const packingValues = [packingHeader, ...packingRows];
 
           const shopHeader = ["地區", "物品", "地點", "預算", "狀態", "備註"];
-          const formatChecklist = (list, doneText, undoText) => {
-              return list.map(i => [i.region, i.title, i.location, i.cost, i.completed ? doneText : undoText, i.notes]);
-          };
-          const shoppingData = [shopHeader, ...formatChecklist(shoppingList, "已購買", "未購買")];
-          const foodData = [shopHeader, ...formatChecklist(foodList, "已吃", "未吃")];
-          const sightseeingData = [shopHeader, ...formatChecklist(sightseeingList, "已去", "未去")];
+          const shopRows = shoppingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已購買" : "未購買", i.notes]);
+          const shopValues = [shopHeader, ...shopRows];
 
-          // 2. 檢查檔案 ID (Check File ID)
+          const foodRows = foodList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已吃" : "未吃", i.notes]);
+          const foodValues = [shopHeader, ...foodRows];
+
+          const sightRows = sightseeingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已去" : "未去", i.notes]);
+          const sightValues = [shopHeader, ...sightRows];
+
+          // 2. 確定檔案 ID (File Handling)
           let targetFileId = googleDriveFileId;
-          const sheetTitles = ["專案概覽", "行程表", "費用", "管理類別", "行李", "購物", "美食", "景點"];
 
+          // 若沒有 ID，建立新檔案
           if (!targetFileId) {
-              // 建立新檔案
               const createRes = await window.gapi.client.sheets.spreadsheets.create({
-                  resource: {
-                      properties: { title: `TravelApp_${tripSettings.title}` },
-                      sheets: sheetTitles.map(t => ({ properties: { title: t } }))
-                  }
+                  properties: { title: `TravelApp_${tripSettings.title}` }
               });
               targetFileId = createRes.result.spreadsheetId;
-              setGoogleDriveFileId(targetFileId);
-              
-              // 立即更新上層狀態以保存 ID
-              onSaveData({ 
-                tripSettings, companions, currencySettings, itineraries, 
-                expenses, packingList, shoppingList, foodList, sightseeingList,
-                categories: { itinerary: itineraryCategories, expense: expenseCategories },
-                googleDriveFileId: targetFileId 
+              setGoogleDriveFileId(targetFileId); // 更新本地狀態
+          }
+
+          // 3. 確保工作表存在 (Ensure Sheets Exist)
+          const ssMeta = await window.gapi.client.sheets.spreadsheets.get({ spreadsheetId: targetFileId });
+          const existingSheetTitles = ssMeta.result.sheets.map(s => s.properties.title);
+          const requiredSheets = ["專案概覽", "行程表", "費用", "管理類別", "行李", "購物", "美食", "景點"];
+          
+          const addSheetRequests = [];
+          requiredSheets.forEach(sheetTitle => {
+              if (!existingSheetTitles.includes(sheetTitle)) {
+                  addSheetRequests.push({ addSheet: { properties: { title: sheetTitle } } });
+              }
+          });
+
+          if (addSheetRequests.length > 0) {
+              await window.gapi.client.sheets.spreadsheets.batchUpdate({
+                  spreadsheetId: targetFileId,
+                  resource: { requests: addSheetRequests }
               });
           }
 
-          // 3. 清除舊資料與寫入新資料 (Batch Clear & Update)
-          // 為了確保不會有舊資料殘留，先清除內容
-          await window.gapi.client.sheets.spreadsheets.values.batchClear({
-              spreadsheetId: targetFileId,
-              ranges: sheetTitles.map(t => `'${t}'!A:Z`)
-          });
+          // 4. 寫入資料 (Batch Update)
+          const dataBody = [
+              { range: "專案概覽!A1", values: overviewValues },
+              { range: "行程表!A1", values: itinValues },
+              { range: "費用!A1", values: expValues },
+              { range: "管理類別!A1", values: catValues },
+              { range: "行李!A1", values: packingValues },
+              { range: "購物!A1", values: shopValues },
+              { range: "美食!A1", values: foodValues },
+              { range: "景點!A1", values: sightValues }
+          ];
 
-          // 寫入
           await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
               spreadsheetId: targetFileId,
               resource: {
                   valueInputOption: "USER_ENTERED",
-                  data: [
-                      { range: "'專案概覽'!A1", values: overviewData },
-                      { range: "'行程表'!A1", values: itinData },
-                      { range: "'費用'!A1", values: expData },
-                      { range: "'管理類別'!A1", values: catData },
-                      { range: "'行李'!A1", values: packingData },
-                      { range: "'購物'!A1", values: shoppingData },
-                      { range: "'美食'!A1", values: foodData },
-                      { range: "'景點'!A1", values: sightseeingData },
-                  ]
+                  data: dataBody
               }
           });
-
-          if (!isSilent) alert(`同步成功！\n檔案：${tripSettings.title}\n(已覆蓋更新雲端檔案)`);
+          
+          if (!isSilent) alert(`同步成功！\n資料已寫入雲端檔案。\n(檔名: TravelApp_${tripSettings.title})`);
 
       } catch (error) {
           console.error("Error saving to Google Sheets:", error);
-          if (!isSilent) alert("同步失敗，請檢查網路或權限。\n\n錯誤代碼：" + (error.result?.error?.message || error.message));
+          if (!isSilent) alert("同步失敗，請檢查網路或權限。\n(請確保已重新登入並授予完整權限)");
       } finally {
           setIsSyncing(false);
           setIsAutoSaving(false);
@@ -344,12 +348,30 @@ const TripPlanner = ({
   const handleExportToPDF = () => {
     try {
       const title = tripSettings.title || "My Trip";
-      alert("PDF 匯出功能 (模擬)\n提示：您可以使用瀏覽器的 '列印' 功能並選擇 '另存為 PDF'。");
-      window.print();
+      alert("PDF 匯出功能 (模擬)");
     } catch (err) {
       console.error("PDF Export Error:", err);
     }
   };
+
+  useEffect(() => {
+    onSaveData({
+      tripSettings,
+      companions,
+      currencySettings,
+      itineraries,
+      packingList,
+      shoppingList,
+      foodList,
+      sightseeingList,
+      expenses,
+      categories: {
+        itinerary: itineraryCategories,
+        expense: expenseCategories
+      },
+      googleDriveFileId: googleDriveFileId
+    });
+  }, [tripSettings, companions, currencySettings, itineraries, packingList, shoppingList, foodList, sightseeingList, expenses, itineraryCategories, expenseCategories, googleDriveFileId]);
 
   // --- Google Drive Image Helpers ---
   const ensureTravelAppFolder = async () => {
@@ -519,6 +541,28 @@ const TripPlanner = ({
             // 使用 helper 解析資料
             const parsedData = parseProjectDataFromGAPI("local_import", file.name, valueRanges);
 
+            // --- 補丁：本機匯入的 costType 後處理 ---
+            const expenseSheet = valueRanges.find(r => r.range.includes("費用"));
+            if (expenseSheet && expenseSheet.values && parsedData.expenses) {
+                const rawRows = expenseSheet.values.slice(1);
+                // 這裡的 values 已經是 array of objects (因為 header:1)，需要特別處理
+                // 如果 window.XLSX.utils.sheet_to_json 使用 {header: 1}，則 rawRows 是 array of arrays
+                const validRawRows = rawRows.filter(row => row[0]);
+                
+                if (validRawRows.length > 0) {
+                    parsedData.expenses = parsedData.expenses.map((exp, i) => {
+                        if(i < validRawRows.length) {
+                            return {
+                                ...exp,
+                                costType: validRawRows[i][8] || 'FOREIGN' // 讀取第 9 欄
+                            }
+                        }
+                        return exp;
+                    });
+                }
+            }
+            // ------------------------------------
+
             // 更新狀態
             setTripSettings(parsedData.tripSettings);
             setCompanions(parsedData.companions);
@@ -591,7 +635,8 @@ const TripPlanner = ({
         window.XLSX.utils.book_append_sheet(wb, wsItin, "行程表");
 
         // 3. Expenses Sheet
-        const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節"];
+        // 新增「幣別類型」欄位 (index 8)
+        const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節", "幣別類型"];
         const expRows = expenses.map(item => {
             const cat = expenseCategories.find(c => c.id === item.category);
             // Format split details
@@ -613,7 +658,8 @@ const TripPlanner = ({
                 item.location,
                 item.payer,
                 item.cost,
-                splitText
+                splitText,
+                item.costType || 'FOREIGN' // 寫入幣別類型
             ];
         });
         const wsExp = window.XLSX.utils.aoa_to_sheet([expHeader, ...expRows]);
@@ -1062,6 +1108,17 @@ const TripPlanner = ({
        const currentCategory = exp.category;
        const categoryDef = expenseCategories.find(c => c.id === currentCategory) || { label: '未分類', icon: 'Coins' };
        const twd = Math.round((exp.cost || 0) * currencySettings.exchangeRate);
+       
+       // --- 修正：根據選擇的幣別顯示主金額 ---
+       let displayMain, displaySub;
+       if (exp.costType === 'TWD') {
+           displayMain = `TWD ${formatMoney(twd)}`;
+           displaySub = `(${exp.currency} ${formatMoney(exp.cost)})`;
+       } else {
+           displayMain = `${exp.currency} ${formatMoney(exp.cost)}`;
+           displaySub = `(NT$ ${formatMoney(twd)})`;
+       }
+
        let categoryHeader = null;
        
        if (index === 0 || currentCategory !== prevExp?.category) {
@@ -1095,7 +1152,7 @@ const TripPlanner = ({
                  </div>
                </div>
              </div>
-             <div className="text-right shrink-0"><div className={`text-sm font-bold ${theme.accent} font-serif`}>{exp.currency} {formatMoney(exp.cost)}</div><div className="text-[10px] text-[#999] font-medium">(NT$ {formatMoney(twd)})</div></div>
+             <div className="text-right shrink-0"><div className={`text-sm font-bold ${theme.accent} font-serif`}>{displayMain}</div><div className="text-[10px] text-[#999] font-medium">{displaySub}</div></div>
            </div>
          </React.Fragment>
        );
@@ -1263,7 +1320,7 @@ const TripPlanner = ({
                   return (
                     <div key={person} onClick={() => setStatsPersonFilter(statsPersonFilter === person ? 'all' : person)} className={`border rounded-xl p-3 shadow-sm min-w-[8rem] flex flex-col items-center cursor-pointer transition-all ${statsPersonFilter === person ? `${theme.hover} ${theme.primaryBorder} ring-1 ring-[#5F6F52]` : `${theme.card} ${theme.border} ${theme.hover}`}`}>
                        {/* 優化：改用 PayerAvatar 風格或直接套用固定文字顏色，避免受主題色影響 */}
-                       <div className={`w-10 h-10 rounded-full ${getAvatarColor(idx)} flex items-center justify-center text-[#3A3A3A] text-sm font-bold font-serif mb-2`}>{person.charAt(0)}</div>
+                       <div className={`w-10 h-10 rounded-full ${getAvatarColor(idx)} flex items-center justify-center text-white text-sm font-bold font-serif mb-2`}>{person.charAt(0)}</div>
                        <div className="text-xs font-bold text-[#3A3A3A] mb-1">{person}</div>
                        <div className={`text-sm font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.symbol} {formatMoney(amount)}</div>
                     </div>
@@ -1352,8 +1409,17 @@ const TripPlanner = ({
                 const categoryDef = expenseCategories.find(c => c.id === item.category) || { label: '未分類', icon: 'Coins' };
                 const Icon = getIconComponent(categoryDef.icon);
                 const twd = Math.round(item.cost * currencySettings.exchangeRate);
-                const mainAmount = `${item.currency} ${formatMoney(item.cost)}`;
-                const subAmount = `(NT$ ${formatMoney(twd)})`;
+                
+                // --- 修正：根據選擇的幣別顯示主金額 ---
+                let mainAmount, subAmount;
+                if (item.costType === 'TWD') {
+                    mainAmount = `TWD ${formatMoney(twd)}`;
+                    subAmount = `(${item.currency} ${formatMoney(item.cost)})`;
+                } else {
+                    mainAmount = `${item.currency} ${formatMoney(item.cost)}`;
+                    subAmount = `(NT$ ${formatMoney(twd)})`;
+                }
+                // ------------------------------------
                 
                 let groupHeader = null;
                 const prevItem = getCurrentList()[index - 1];
@@ -1377,7 +1443,10 @@ const TripPlanner = ({
                         </div>
                         <div className="text-xs text-[#888] mb-2 flex items-center gap-2"><Calendar size={12} className={theme.accent}/><span>{item.date}</span><span>•</span><span className={`${theme.accent} font-bold`}>{payerDisplay} ● 支付</span></div>
                         <div className="flex justify-between items-end"><div className={`text-[10px] text-[#666] ${theme.bg} px-2 py-1.5 rounded flex flex-wrap items-center gap-x-2 gap-y-1`}><span className="font-bold">分攤:</span>{item.shares && item.shares.map((share, idx) => (<React.Fragment key={share}><div className="flex items-center gap-1"><PayerAvatar name={share} companions={companions} theme={theme} size="w-3 h-3" /><span>{share}</span></div>{idx < item.shares.length - 1 && <span className="text-[#CCC]">|</span>}</React.Fragment>))}</div>
-                        <div className="text-right shrink-0 ml-2"><div className={`text-sm font-serif font-bold ${theme.accent}`}>{mainAmount}</div><div className="text-[10px] text-[#999] font-medium">{subAmount}</div></div>
+                        <div className="text-right shrink-0 ml-2">
+                            <div className={`text-sm font-serif font-bold ${theme.accent}`}>{mainAmount}</div>
+                            <div className="text-[10px] text-[#999] font-medium">{subAmount}</div>
+                        </div>
                         </div>
                       </div>
                     </div>
@@ -1691,7 +1760,10 @@ const TripPlanner = ({
                        <span className="text-xs">讀取檔案列表中...</span>
                    </div>
                ) : cloudFiles.length === 0 ? (
-                   <div className="text-center py-8 text-[#888] text-xs">找不到任何 TravelApp_ 開頭的檔案</div>
+                   <div className="text-center py-8 text-[#888] text-xs">
+                        找不到任何 TravelApp_ 開頭的檔案<br/>
+                        <span className="text-[10px] opacity-70">(僅支援 Google 試算表格式，不支援直接上傳的 .xlsx)</span>
+                   </div>
                ) : (
                    <div className="space-y-1">
                        {cloudFiles.map(file => (
