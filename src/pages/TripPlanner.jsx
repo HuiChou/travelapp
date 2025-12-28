@@ -97,7 +97,6 @@ const TripPlanner = ({
   const fetchCloudFiles = async () => {
       setIsLoadingCloudList(true);
       try {
-          // 使用 contains 進行模糊搜尋，確保能找到包含關鍵字的檔案
           const q = "name contains 'TravelApp_' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false";
           const response = await window.gapi.client.drive.files.list({
               q: q,
@@ -121,7 +120,7 @@ const TripPlanner = ({
         const ranges = [
             "專案概覽!A:B", 
             "行程表!A:H", 
-            "費用!A:I", // 讀取到 I 欄 (index 8) - 重要！
+            "費用!A:I", 
             "管理類別!A:E", 
             "行李!A:B", 
             "購物!A:F", 
@@ -181,8 +180,6 @@ const TripPlanner = ({
       else setIsAutoSaving(true);
 
       try {
-          // 1. 準備要寫入的資料 (Data Preparation)
-          // A. 專案概覽
           const overviewValues = [
               ["專案概覽", "內容"],
               ["專案標題", tripSettings.title],
@@ -195,7 +192,6 @@ const TripPlanner = ({
               ["旅行人員", companions.join(", ")]
           ];
 
-          // B. 行程表
           const itinHeader = ["天數", "時間", "停留(分)", "類別", "標題", "地點", "預算", "備註"];
           const itinRows = [];
           Object.keys(itineraries).sort((a,b)=>a-b).forEach(dayIndex => {
@@ -217,8 +213,6 @@ const TripPlanner = ({
           });
           const itinValues = [itinHeader, ...itinRows];
 
-          // C. 費用 (含幣別類型)
-          // 優化：寫入實際幣別代碼
           const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節", "幣別"];
           const expRows = expenses.map(item => {
               const cat = expenseCategories.find(c => c.id === item.category);
@@ -240,19 +234,17 @@ const TripPlanner = ({
                   item.payer,
                   item.cost,
                   splitText,
-                  item.costType === 'TWD' ? 'TWD' : currencySettings.selectedCountry.currency // 這裡確保了若選TWD則顯示TWD
+                  item.costType === 'TWD' ? 'TWD' : currencySettings.selectedCountry.currency
               ];
           });
           const expValues = [expHeader, ...expRows];
 
-          // D. 管理類別
           const catHeader = ["類型", "ID", "名稱", "圖示", "顏色"];
           const catRows = [];
           itineraryCategories.forEach(c => catRows.push(["行程", c.id, c.label, c.icon, c.color]));
           expenseCategories.forEach(c => catRows.push(["費用", c.id, c.label, c.icon, c.color || '']));
           const catValues = [catHeader, ...catRows];
 
-          // E. 各式清單
           const packingHeader = ["物品", "狀態"];
           const packingRows = packingList.map(i => [i.title, i.completed ? "已完成" : "未完成"]);
           const packingValues = [packingHeader, ...packingRows];
@@ -267,7 +259,6 @@ const TripPlanner = ({
           const sightRows = sightseeingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已去" : "未去", i.notes]);
           const sightValues = [shopHeader, ...sightRows];
 
-          // 2. 確定檔案 ID
           let targetFileId = googleDriveFileId;
 
           if (!targetFileId) {
@@ -278,7 +269,6 @@ const TripPlanner = ({
               setGoogleDriveFileId(targetFileId); 
           }
 
-          // 3. 確保工作表存在
           const ssMeta = await window.gapi.client.sheets.spreadsheets.get({ spreadsheetId: targetFileId });
           const existingSheetTitles = ssMeta.result.sheets.map(s => s.properties.title);
           const requiredSheets = ["專案概覽", "行程表", "費用", "管理類別", "行李", "購物", "美食", "景點"];
@@ -297,7 +287,6 @@ const TripPlanner = ({
               });
           }
 
-          // 4. 寫入資料
           const dataBody = [
               { range: "專案概覽!A1", values: overviewValues },
               { range: "行程表!A1", values: itinValues },
@@ -356,7 +345,6 @@ const TripPlanner = ({
     });
   }, [tripSettings, companions, currencySettings, itineraries, packingList, shoppingList, foodList, sightseeingList, expenses, itineraryCategories, expenseCategories, googleDriveFileId]);
 
-  // --- Google Drive Image Helpers ---
   const ensureTravelAppFolder = async () => {
       if (driveFolderId) return driveFolderId;
       try {
@@ -553,7 +541,6 @@ const TripPlanner = ({
     try {
         const wb = window.XLSX.utils.book_new();
 
-        // 1. Overview Sheet
         const overviewData = [
             ["專案概覽", "內容"],
             ["專案標題", tripSettings.title],
@@ -568,7 +555,6 @@ const TripPlanner = ({
         const wsOverview = window.XLSX.utils.aoa_to_sheet(overviewData);
         window.XLSX.utils.book_append_sheet(wb, wsOverview, "專案概覽");
 
-        // 2. Itinerary Sheet
         const itinHeader = ["天數", "時間", "停留(分)", "類別", "標題", "地點", "預算", "備註"];
         const itinRows = [];
         Object.keys(itineraries).sort((a,b)=>a-b).forEach(dayIndex => {
@@ -590,8 +576,6 @@ const TripPlanner = ({
         const wsItin = window.XLSX.utils.aoa_to_sheet([itinHeader, ...itinRows]);
         window.XLSX.utils.book_append_sheet(wb, wsItin, "行程表");
 
-        // 3. Expenses Sheet
-        // 優化：寫入實際幣別代碼
         const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節", "幣別"];
         const expRows = expenses.map(item => {
             const cat = expenseCategories.find(c => c.id === item.category);
@@ -614,13 +598,12 @@ const TripPlanner = ({
                 item.payer,
                 item.cost,
                 splitText,
-                item.costType === 'TWD' ? 'TWD' : currencySettings.selectedCountry.currency // 這裡確保了若選TWD則顯示TWD
+                item.costType === 'TWD' ? 'TWD' : currencySettings.selectedCountry.currency
             ];
         });
         const wsExp = window.XLSX.utils.aoa_to_sheet([expHeader, ...expRows]);
         window.XLSX.utils.book_append_sheet(wb, wsExp, "費用");
 
-        // 4. Categories Sheet
         const catHeader = ["類型", "ID", "名稱", "圖示", "顏色"];
         const catRows = [];
         itineraryCategories.forEach(c => catRows.push(["行程", c.id, c.label, c.icon, c.color]));
@@ -628,7 +611,6 @@ const TripPlanner = ({
         const wsCat = window.XLSX.utils.aoa_to_sheet([catHeader, ...catRows]);
         window.XLSX.utils.book_append_sheet(wb, wsCat, "管理類別");
 
-        // 5. Checklists
         const packingHeader = ["物品", "狀態"];
         const packingRows = packingList.map(i => [i.title, i.completed ? "已完成" : "未完成"]);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([packingHeader, ...packingRows]), "行李");
@@ -944,7 +926,7 @@ const TripPlanner = ({
       setIsSettingsOpen(true);
   };
 
-  // --- Statistics Logic ---
+  // --- Statistics Logic (EXPERT OPTIMIZATION) ---
   const statisticsData = useMemo(() => {
     const personStats = {};
     companions.forEach(c => { personStats[c] = { paid: 0, share: 0, balance: 0 }; });
@@ -952,6 +934,11 @@ const TripPlanner = ({
     const categoryStats = { real: {}, personal: {} };
     let personalExpensesList = [];
     const dailyTotals = {}; 
+
+    // 核心匯率轉換 (Normalize to Foreign Currency)
+    // 若原幣別為 TWD，除以匯率轉換為外幣；若為外幣則維持不變
+    const rate = currencySettings.exchangeRate || 1;
+    const toForeign = (amount, type) => (type === 'TWD' ? (amount / rate) : amount);
 
     const filteredSourceExpenses = expenses.filter(exp => {
         let matchesDay = true;
@@ -968,53 +955,92 @@ const TripPlanner = ({
     });
 
     filteredSourceExpenses.forEach(exp => {
-      const amount = exp.cost || 0;
+      // 統一將金額轉換為外幣進行統計
+      const amountForeign = toForeign(exp.cost || 0, exp.costType);
       const category = exp.category || 'other';
+
       if (!categoryStats.real[category]) categoryStats.real[category] = 0;
-      categoryStats.real[category] += amount;
+      categoryStats.real[category] += amountForeign;
 
       const dateKey = exp.date;
       if (!dailyTotals[dateKey]) dailyTotals[dateKey] = 0;
-      dailyTotals[dateKey] += amount;
+      dailyTotals[dateKey] += amountForeign;
 
       if (exp.details && exp.details.length > 0) {
           exp.details.forEach((d, idx) => {
-              const dAmount = parseFloat(d.amount) || 0;
+              // 分帳細項金額也需轉換
+              const dAmountRaw = parseFloat(d.amount) || 0;
+              // 假設細項金額幣別跟隨主項目幣別
+              const dAmountForeign = toForeign(dAmountRaw, exp.costType);
+
               let payer = d.payer || 'Unknown';
               let target = d.target || 'Unknown';
               let currentPayers = payer === 'EACH' ? companions : [payer];
               let currentTargets = (target === 'ALL' || target === 'EACH') ? companions : [target];
-              const totalLineCost = dAmount;
+              const totalLineCost = dAmountForeign;
               const paidPerPerson = totalLineCost / currentPayers.length;
+              
               currentPayers.forEach(p => getSafeStat(p).paid += paidPerPerson);
+              
               const sharePerPerson = totalLineCost / currentTargets.length;
               currentTargets.forEach(t => getSafeStat(t).share += sharePerPerson);
 
               if (target === 'ALL' || target === 'EACH') {
-                  companions.forEach(c => personalExpensesList.push({ ...exp, id: `${exp.id}_${idx}_${c}`, cost: sharePerPerson, payer: c, realPayer: (payer === 'EACH' ? c : payer), isVirtual: true, noteSuffix: `(${target === 'EACH' ? '各付' : '均攤'})` }));
+                  companions.forEach(c => {
+                      personalExpensesList.push({
+                           ...exp, 
+                           id: `${exp.id}_${idx}_${c}`, 
+                           cost: sharePerPerson, // 這裡儲存轉換後的外幣金額
+                           costType: 'FOREIGN', // 強制標記為外幣，供列表顯示使用
+                           currency: currencySettings.selectedCountry.currency,
+                           payer: c, 
+                           realPayer: (payer === 'EACH' ? c : payer), 
+                           isVirtual: true, 
+                           noteSuffix: `(${target === 'EACH' ? '各付' : '均攤'})` 
+                        });
+                  });
                   if (!categoryStats.personal[category]) categoryStats.personal[category] = 0;
                   categoryStats.personal[category] += totalLineCost;
               } else {
-                  personalExpensesList.push({ ...exp, id: `${exp.id}_${idx}`, cost: totalLineCost, payer: target, realPayer: (payer === 'EACH' ? target : payer), isVirtual: true, noteSuffix: `` });
+                  personalExpensesList.push({ 
+                      ...exp, 
+                      id: `${exp.id}_${idx}`, 
+                      cost: totalLineCost, // 外幣
+                      costType: 'FOREIGN',
+                      currency: currencySettings.selectedCountry.currency,
+                      payer: target, 
+                      realPayer: (payer === 'EACH' ? target : payer), 
+                      isVirtual: true, 
+                      noteSuffix: `` 
+                  });
                   if (!categoryStats.personal[category]) categoryStats.personal[category] = 0;
                   categoryStats.personal[category] += totalLineCost;
               }
           });
       } else {
           const payer = exp.payer || 'Unknown';
-          getSafeStat(payer).paid += amount;
-          personalExpensesList.push({ ...exp, realPayer: payer, payer: payer }); 
+          getSafeStat(payer).paid += amountForeign;
+          personalExpensesList.push({ 
+              ...exp, 
+              cost: amountForeign, // Update Cost to normalized Foreign Amount
+              costType: 'FOREIGN',
+              currency: currencySettings.selectedCountry.currency,
+              realPayer: payer, 
+              payer: payer 
+          }); 
           if (!categoryStats.personal[category]) categoryStats.personal[category] = 0;
-          categoryStats.personal[category] += amount;
+          categoryStats.personal[category] += amountForeign;
       }
     });
+    
+    // 計算餘額與債務 (所有數字皆為外幣)
     Object.keys(personStats).forEach(p => personStats[p].balance = personStats[p].paid - personStats[p].share);
     const transactions = solveDebts(personStats);
     
     const sortedDailyTotals = Object.entries(dailyTotals).sort((a, b) => new Date(a[0]) - new Date(b[0])).map(([date, total]) => ({ date, total }));
 
     return { personStats, categoryStats, transactions, personalExpensesList, sortedDailyTotals };
-  }, [expenses, companions, expenseCategories, statsDayFilter, statsCategoryFilter, tripSettings.startDate]);
+  }, [expenses, companions, expenseCategories, statsDayFilter, statsCategoryFilter, tripSettings.startDate, currencySettings.exchangeRate]); // Added exchangeRate dependency
 
   const renderDetailedList = () => {
     const sourceList = statsMode === 'real' ? expenses : statisticsData.personalExpensesList;
@@ -1041,26 +1067,39 @@ const TripPlanner = ({
        const prevExp = sortedExpenses[index - 1];
        const currentCategory = exp.category;
        const categoryDef = expenseCategories.find(c => c.id === currentCategory) || { label: '未分類', icon: 'Coins' };
-       const twd = Math.round((exp.cost || 0) * currencySettings.exchangeRate);
        
+       // 計算雙幣別顯示字串
        let displayMain, displaySub;
        if (exp.costType === 'TWD') {
-           displayMain = `TWD ${formatMoney(twd)}`;
-           displaySub = `(${exp.currency} ${formatMoney(exp.cost)})`;
+           const twdVal = exp.cost || 0;
+           const foreignVal = twdVal / currencySettings.exchangeRate;
+           displayMain = `TWD ${formatMoney(twdVal)}`;
+           displaySub = `(${currencySettings.selectedCountry.currency} ${formatMoney(foreignVal)})`;
        } else {
-           displayMain = `${exp.currency} ${formatMoney(exp.cost)}`;
-           displaySub = `(NT$ ${formatMoney(twd)})`;
+           const foreignVal = exp.cost || 0;
+           const twdVal = foreignVal * currencySettings.exchangeRate;
+           displayMain = `${exp.currency || currencySettings.selectedCountry.currency} ${formatMoney(foreignVal)}`;
+           displaySub = `(NT$ ${formatMoney(twdVal)})`;
        }
 
        let categoryHeader = null;
        
        if (index === 0 || currentCategory !== prevExp?.category) {
          const CatIcon = getIconComponent(categoryDef.icon);
-         const categoryTotal = sortedExpenses.filter(e => e.category === currentCategory).reduce((sum, e) => sum + (e.cost || 0), 0);
+         // 這裡使用 statisticsData 計算好的正確外幣總和，而不是重新加總 raw cost
+         const categoryTotalForeign = statsMode === 'real' 
+            ? (statisticsData.categoryStats.real[currentCategory] || 0) 
+            : (statisticsData.categoryStats.personal[currentCategory] || 0);
+         
+         const categoryTotalTWD = categoryTotalForeign * currencySettings.exchangeRate;
+
          categoryHeader = (
            <div className={`sticky top-0 z-10 ${theme.bg}/95 backdrop-blur-sm py-2 px-1 mb-2 mt-4 border-b ${theme.border} flex justify-between items-center animate-in fade-in first:mt-0`}>
              <div className={`text-sm font-bold ${theme.primary} flex items-center gap-2`}><CatIcon size={16} /> {categoryDef.label}</div>
-             <div className="text-right"><div className={`text-xs font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(categoryTotal)}</div></div>
+             <div className="text-right">
+                <div className={`text-xs font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(categoryTotalForeign)}</div>
+                <div className="text-[10px] text-[#999] font-medium">(NT$ {formatMoney(categoryTotalTWD)})</div>
+             </div>
            </div>
          );
        }
@@ -1246,12 +1285,14 @@ const TripPlanner = ({
                 </div>
                 {companions.map((person, idx) => {
                   const stat = statisticsData.personStats[person];
-                  const amount = statsMode === 'real' ? stat.paid : stat.share;
+                  const amountForeign = statsMode === 'real' ? stat.paid : stat.share;
+                  const amountTWD = amountForeign * currencySettings.exchangeRate;
                   return (
                     <div key={person} onClick={() => setStatsPersonFilter(statsPersonFilter === person ? 'all' : person)} className={`border rounded-xl p-3 shadow-sm min-w-[8rem] flex flex-col items-center cursor-pointer transition-all ${statsPersonFilter === person ? `${theme.hover} ${theme.primaryBorder} ring-1 ring-[#5F6F52]` : `${theme.card} ${theme.border} ${theme.hover}`}`}>
                        <div className={`w-10 h-10 rounded-full ${getAvatarColor(idx)} flex items-center justify-center text-white text-sm font-bold font-serif mb-2`}>{person.charAt(0).toUpperCase()}</div>
                        <div className="text-xs font-bold text-[#3A3A3A] mb-1">{person}</div>
-                       <div className={`text-sm font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.symbol} {formatMoney(amount)}</div>
+                       <div className={`text-sm font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.symbol} {formatMoney(amountForeign)}</div>
+                       <div className="text-[9px] text-[#999] font-medium mt-0.5">(NT$ {formatMoney(amountTWD)})</div>
                     </div>
                   )
                 })}
@@ -1262,7 +1303,9 @@ const TripPlanner = ({
               <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2"><ArrowLeftRight size={16}/> 結算建議 (依篩選)</h3>
               <div className="space-y-3">
                 {statisticsData.transactions.length > 0 ? (
-                  statisticsData.transactions.map((tx, i) => (
+                  statisticsData.transactions.map((tx, i) => {
+                      const amountTWD = tx.amount * currencySettings.exchangeRate;
+                      return (
                       <div key={i} className={`flex items-center justify-between text-sm border-b ${theme.border} pb-3 last:border-0`}>
                           <div className="flex items-center gap-2 flex-1">
                             <div className="flex items-center gap-1.5 bg-[#F9F9F9] pl-1 pr-2 py-1 rounded-full border border-[#EEE]">
@@ -1275,9 +1318,12 @@ const TripPlanner = ({
                                 <span className="font-bold text-[#3A3A3A] text-xs">{tx.to}</span>
                             </div>
                           </div>
-                          <div className={`font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(tx.amount)}</div>
+                          <div className="text-right">
+                            <div className={`font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(tx.amount)}</div>
+                            <div className="text-[10px] text-[#999] font-medium">(NT$ {formatMoney(amountTWD)})</div>
+                          </div>
                       </div>
-                  ))
+                  )})
                 ) : ( <div className="text-center text-[#888] text-xs py-2">已結清</div> )}
               </div>
             </div>
@@ -1286,12 +1332,17 @@ const TripPlanner = ({
                 <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
                     <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2"><Calendar size={16}/> 每日消費明細</h3>
                     <div className="space-y-2">
-                        {statisticsData.sortedDailyTotals.map(({ date, total }) => (
+                        {statisticsData.sortedDailyTotals.map(({ date, total }) => {
+                            const totalTWD = total * currencySettings.exchangeRate;
+                            return (
                             <div key={date} className={`flex justify-between items-center text-sm py-2 border-b ${theme.border} last:border-0`}>
                                 <div className="text-[#3A3A3A] font-serif">{date}</div>
-                                <div className={`font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(total)}</div>
+                                <div className="text-right">
+                                    <div className={`font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(total)}</div>
+                                    <div className="text-[10px] text-[#999] font-medium">(NT$ {formatMoney(totalTWD)})</div>
+                                </div>
                             </div>
-                        ))}
+                        )})}
                     </div>
                 </div>
             )}
@@ -1303,6 +1354,7 @@ const TripPlanner = ({
                         {categoryChartData.map(cat => {
                             const Icon = getIconComponent(cat.icon);
                             const percent = maxCategoryAmount > 0 ? (cat.amount / maxCategoryAmount) * 100 : 0;
+                            const amountTWD = cat.amount * currencySettings.exchangeRate;
                             return (
                                 <div key={cat.id} className="flex items-center gap-3 text-xs">
                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-[#F5F5F5] text-[#888] shrink-0 border border-[#EAEAEA]`}>
@@ -1311,7 +1363,10 @@ const TripPlanner = ({
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between mb-1.5">
                                             <span className="font-bold text-[#3A3A3A]">{cat.label}</span>
-                                            <span className={`font-serif font-bold ${theme.primary}`}>{currencySettings.selectedCountry.symbol} {formatMoney(cat.amount)}</span>
+                                            <div className="text-right">
+                                                <span className={`font-serif font-bold ${theme.primary}`}>{currencySettings.selectedCountry.symbol} {formatMoney(cat.amount)}</span>
+                                                <span className="text-[9px] text-[#999] font-medium ml-1">(NT$ {formatMoney(amountTWD)})</span>
+                                            </div>
                                         </div>
                                         <div className="h-2 w-full bg-[#F0F0F0] rounded-full overflow-hidden">
                                             <div className={`h-full ${theme.primaryBg} opacity-80 rounded-full transition-all duration-500 ease-out`} style={{ width: `${percent}%` }}></div>
@@ -1333,15 +1388,20 @@ const TripPlanner = ({
               if (viewMode === 'expenses') {
                 const categoryDef = expenseCategories.find(c => c.id === item.category) || { label: '未分類', icon: 'Coins' };
                 const Icon = getIconComponent(categoryDef.icon);
-                const twd = Math.round(item.cost * currencySettings.exchangeRate);
                 
+                // 列表模式：直接顯示輸入時的幣別與金額，並換算顯示另一種
+                // 這裡的邏輯保持單筆顯示的原樣，但優化了 TWD 換算的顯示
                 let mainAmount, subAmount;
                 if (item.costType === 'TWD') {
-                    mainAmount = `TWD ${formatMoney(twd)}`;
-                    subAmount = `(${item.currency} ${formatMoney(item.cost)})`;
+                    const twdVal = item.cost || 0;
+                    const foreignVal = twdVal / currencySettings.exchangeRate;
+                    mainAmount = `TWD ${formatMoney(twdVal)}`;
+                    subAmount = `(${currencySettings.selectedCountry.currency} ${formatMoney(foreignVal)})`;
                 } else {
-                    mainAmount = `${item.currency} ${formatMoney(item.cost)}`;
-                    subAmount = `(NT$ ${formatMoney(twd)})`;
+                    const foreignVal = item.cost || 0;
+                    const twdVal = foreignVal * currencySettings.exchangeRate;
+                    mainAmount = `${item.currency || currencySettings.selectedCountry.currency} ${formatMoney(foreignVal)}`;
+                    subAmount = `(NT$ ${formatMoney(twdVal)})`;
                 }
                 
                 let groupHeader = null;
