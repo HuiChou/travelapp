@@ -13,6 +13,7 @@ import {
   Image as ImageIcon, ExternalLink, ArrowDownCircle
 } from 'lucide-react';
 
+// Fix imports to point to the correct relative path based on file structure
 import { 
     DEFAULT_ITINERARY_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, COUNTRY_OPTIONS, 
     ICON_REGISTRY, getIconComponent, CATEGORY_COLORS, THEMES, AVATAR_COLORS
@@ -25,7 +26,7 @@ import {
     parseProjectDataFromGAPI 
 } from '../utils/helpers';
 
-// 引入 CompositeFilter
+// Fix import for UIComponents
 import { BottomNav, PayerAvatar, AvatarSelect, CategorySelect, CompositeFilter } from '../components/UIComponents';
 
 const TripPlanner = ({ 
@@ -940,6 +941,17 @@ const TripPlanner = ({
        const currentCategory = exp.category;
        const categoryDef = expenseCategories.find(c => c.id === currentCategory) || { label: '未分類', icon: 'Coins' };
        const twd = Math.round((exp.cost || 0) * currencySettings.exchangeRate);
+       
+       // --- 修正：根據選擇的幣別顯示主金額 ---
+       let displayMain, displaySub;
+       if (exp.costType === 'TWD') {
+           displayMain = `TWD ${formatMoney(twd)}`;
+           displaySub = `(${exp.currency} ${formatMoney(exp.cost)})`;
+       } else {
+           displayMain = `${exp.currency} ${formatMoney(exp.cost)}`;
+           displaySub = `(NT$ ${formatMoney(twd)})`;
+       }
+
        let categoryHeader = null;
        
        if (index === 0 || currentCategory !== prevExp?.category) {
@@ -973,7 +985,7 @@ const TripPlanner = ({
                  </div>
                </div>
              </div>
-             <div className="text-right shrink-0"><div className={`text-sm font-bold ${theme.accent} font-serif`}>{exp.currency} {formatMoney(exp.cost)}</div><div className="text-[10px] text-[#999] font-medium">(NT$ {formatMoney(twd)})</div></div>
+             <div className="text-right shrink-0"><div className={`text-sm font-bold ${theme.accent} font-serif`}>{displayMain}</div><div className="text-[10px] text-[#999] font-medium">{displaySub}</div></div>
            </div>
          </React.Fragment>
        );
@@ -1230,8 +1242,17 @@ const TripPlanner = ({
                 const categoryDef = expenseCategories.find(c => c.id === item.category) || { label: '未分類', icon: 'Coins' };
                 const Icon = getIconComponent(categoryDef.icon);
                 const twd = Math.round(item.cost * currencySettings.exchangeRate);
-                const mainAmount = `${item.currency} ${formatMoney(item.cost)}`;
-                const subAmount = `(NT$ ${formatMoney(twd)})`;
+                
+                // --- 修正：根據選擇的幣別顯示主金額 ---
+                let mainAmount, subAmount;
+                if (item.costType === 'TWD') {
+                    mainAmount = `TWD ${formatMoney(twd)}`;
+                    subAmount = `(${item.currency} ${formatMoney(item.cost)})`;
+                } else {
+                    mainAmount = `${item.currency} ${formatMoney(item.cost)}`;
+                    subAmount = `(NT$ ${formatMoney(twd)})`;
+                }
+                // ------------------------------------
                 
                 let groupHeader = null;
                 const prevItem = getCurrentList()[index - 1];
@@ -1255,7 +1276,10 @@ const TripPlanner = ({
                         </div>
                         <div className="text-xs text-[#888] mb-2 flex items-center gap-2"><Calendar size={12} className={theme.accent}/><span>{item.date}</span><span>•</span><span className={`${theme.accent} font-bold`}>{payerDisplay} ● 支付</span></div>
                         <div className="flex justify-between items-end"><div className={`text-[10px] text-[#666] ${theme.bg} px-2 py-1.5 rounded flex flex-wrap items-center gap-x-2 gap-y-1`}><span className="font-bold">分攤:</span>{item.shares && item.shares.map((share, idx) => (<React.Fragment key={share}><div className="flex items-center gap-1"><PayerAvatar name={share} companions={companions} theme={theme} size="w-3 h-3" /><span>{share}</span></div>{idx < item.shares.length - 1 && <span className="text-[#CCC]">|</span>}</React.Fragment>))}</div>
-                        <div className="text-right shrink-0 ml-2"><div className={`text-sm font-serif font-bold ${theme.accent}`}>{mainAmount}</div><div className="text-[10px] text-[#999] font-medium">{subAmount}</div></div>
+                        <div className="text-right shrink-0 ml-2">
+                            <div className={`text-sm font-serif font-bold ${theme.accent}`}>{mainAmount}</div>
+                            <div className="text-[10px] text-[#999] font-medium">{subAmount}</div>
+                        </div>
                         </div>
                       </div>
                     </div>
@@ -1609,5 +1633,3 @@ const TripPlanner = ({
 };
 
 export default TripPlanner;
-
-
