@@ -121,7 +121,7 @@ const TripPlanner = ({
         const ranges = [
             "專案概覽!A:B", 
             "行程表!A:H", 
-            "費用!A:I", // 讀取到 I 欄 (index 8)
+            "費用!A:I", // 讀取到 I 欄 (index 8) - 重要！
             "管理類別!A:E", 
             "行李!A:B", 
             "購物!A:F", 
@@ -218,7 +218,7 @@ const TripPlanner = ({
           const itinValues = [itinHeader, ...itinRows];
 
           // C. 費用 (含幣別類型)
-          // 優化：寫入實際幣別代碼 (例如 JPY) 而非 'FOREIGN'
+          // 優化：寫入實際幣別代碼
           const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節", "幣別"];
           const expRows = expenses.map(item => {
               const cat = expenseCategories.find(c => c.id === item.category);
@@ -240,7 +240,7 @@ const TripPlanner = ({
                   item.payer,
                   item.cost,
                   splitText,
-                  item.costType === 'TWD' ? 'TWD' : currencySettings.selectedCountry.currency // 寫入實際幣別
+                  item.costType === 'TWD' ? 'TWD' : currencySettings.selectedCountry.currency // 這裡確保了若選TWD則顯示TWD
               ];
           });
           const expValues = [expHeader, ...expRows];
@@ -591,7 +591,7 @@ const TripPlanner = ({
         window.XLSX.utils.book_append_sheet(wb, wsItin, "行程表");
 
         // 3. Expenses Sheet
-        // 優化：寫入實際幣別代碼 (例如 JPY) 而非 'FOREIGN'
+        // 優化：寫入實際幣別代碼
         const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "金額", "分帳細節", "幣別"];
         const expRows = expenses.map(item => {
             const cat = expenseCategories.find(c => c.id === item.category);
@@ -614,7 +614,7 @@ const TripPlanner = ({
                 item.payer,
                 item.cost,
                 splitText,
-                item.costType === 'TWD' ? 'TWD' : currencySettings.selectedCountry.currency // 寫入實際幣別
+                item.costType === 'TWD' ? 'TWD' : currencySettings.selectedCountry.currency // 這裡確保了若選TWD則顯示TWD
             ];
         });
         const wsExp = window.XLSX.utils.aoa_to_sheet([expHeader, ...expRows]);

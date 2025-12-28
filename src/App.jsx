@@ -134,9 +134,6 @@ export default function App() {
 
     try {
         // 1. Search for files
-        // Use 'contains' to match "TravelApp_Title" or "Copy of TravelApp_Title"
-        // Ensure trashed is false
-        // MimeType must be Google Spreadsheet. If user uploaded .xlsx, it won't work with batchGet unless converted.
         const q = "name contains 'TravelApp_' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false";
         const response = await window.gapi.client.drive.files.list({
             q: q,
@@ -155,7 +152,6 @@ export default function App() {
         const newProjects = [];
         const newProjectsData = {};
         
-        // Get all existing file IDs currently loaded to prevent duplicates
         const existingFileIds = new Set(
             Object.values(allProjectsData)
                 .map(p => p.googleDriveFileId)
@@ -163,7 +159,6 @@ export default function App() {
         );
 
         for (const file of files) {
-            // Check if we already have this file ID imported
             if (existingFileIds.has(file.id)) {
                 continue; 
             }
@@ -172,9 +167,10 @@ export default function App() {
 
             try {
                 // 3. Fetch content for new file
+                // FIXED: Expanded range for Expense to include Currency column (A:I)
                 const ranges = [
-                    "專案概覽!A:B", "行程表!A:H", "費用!A:H", "管理類別!A:E", 
-                    "行李!A:B", "購物!A:F", "美食!A:F", "景點!A:F"
+                    "專案概覽!A:B", "行程表!A:H", "費用!A:I", 
+                    "管理類別!A:E", "行李!A:B", "購物!A:F", "美食!A:F", "景點!A:F"
                 ];
                 
                 const sheetRes = await window.gapi.client.sheets.spreadsheets.values.batchGet({
@@ -185,9 +181,6 @@ export default function App() {
 
                 // 4. Parse data using helper
                 const projectData = parseProjectDataFromGAPI(file.id, file.name, sheetRes.result.valueRanges);
-                
-                // Special handling: If title seems generic or empty because of copy, maybe append something?
-                // For now, parseProjectDataFromGAPI handles title extraction from the sheet.
                 
                 // 5. Create new Project ID locally
                 const currentMaxId = Math.max(
@@ -208,7 +201,6 @@ export default function App() {
                 importedCount++;
             } catch (err) {
                 console.warn(`Failed to parse file ${file.name}:`, err);
-                // Continue to next file even if one fails
             }
         }
 

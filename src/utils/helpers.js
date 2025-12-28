@@ -189,7 +189,7 @@ export const generateNewProjectData = (title) => {
   };
 };
 
-// --- Cloud Data Parser (Optimized) ---
+// --- Cloud Data Parser (Optimized for Currency) ---
 export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   const getSheetData = (rangeName) => {
       const range = valueRanges.find(r => r.range.includes(rangeName));
@@ -201,6 +201,7 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   const ovMap = {};
   overviewData.forEach(row => { if(row[0]) ovMap[row[0]] = row[1]; });
   
+  // Logic: Use internal title, fallback to filename if empty
   const title = ovMap["專案標題"] || fileName.replace('TravelApp_', '').replace('.xlsx', '');
   const startDate = ovMap["出發日期"] || new Date().toISOString().split('T')[0];
   const endDate = ovMap["回國日期"] || getNextDay(startDate);
@@ -277,6 +278,7 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   }
 
   // --- Parse Expenses ---
+  // Updated to read Column I (Index 8) for Currency Type
   const expenseData = getSheetData("費用") || [];
   const newExpenses = [];
   if (expenseData.length > 1) {
@@ -289,11 +291,6 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
           const payer = row[5] || "Me";
           const cost = parseFloat(row[6] && typeof row[6] === 'string' ? row[6].replace(/,/g,'') : row[6]) || 0;
           
-          // 解析第 9 欄 (Index 8) 的幣別
-          // 優化：若為 TWD 則保留 TWD，其他任何文字 (JPY, USD, FOREIGN) 都視為 FOREIGN (外幣)
-          const rawCostType = row[8];
-          const costType = (rawCostType === 'TWD') ? 'TWD' : 'FOREIGN';
-
           const splitStr = row[7] || "";
           let shares = [payer];
           let details = [];
@@ -317,6 +314,11 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
                }
           }
 
+          // Parse Currency Column (Index 8)
+          // If 'TWD' -> 'TWD', else default to 'FOREIGN'
+          const currencyColValue = row[8] ? row[8].trim() : '';
+          const costType = currencyColValue === 'TWD' ? 'TWD' : 'FOREIGN';
+
           newExpenses.push({
               id: Date.now() + Math.random() + i,
               date: row[0],
@@ -327,9 +329,9 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
               payer: payer,
               cost: cost,
               currency: currencyCode,
+              costType: costType, // Added
               shares: shares,
-              details: details,
-              costType: costType // 新增此欄位
+              details: details
           });
        }
   }
