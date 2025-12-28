@@ -1553,6 +1553,48 @@ const TripPlanner = ({
         </div>
       )}
 
+      {/* Cloud Load Modal (Added) */}
+      {isCloudLoadModalOpen && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
+          <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border} animate-in zoom-in-95`}>
+            <div className="p-6 border-b border-[#F0F0F0] flex justify-between items-center">
+                <h2 className="text-lg font-bold font-serif text-[#3A3A3A]">選擇雲端檔案</h2>
+                <button onClick={() => setIsCloudLoadModalOpen(false)}><X size={20} className="text-[#999]" /></button>
+            </div>
+            <div className="p-2 overflow-y-auto flex-1">
+               {isLoadingCloudList ? (
+                   <div className="flex flex-col items-center justify-center py-8 text-[#888]">
+                       <Loader2 size={24} className="animate-spin mb-2"/>
+                       <span className="text-xs">讀取檔案列表中...</span>
+                   </div>
+               ) : cloudFiles.length === 0 ? (
+                   <div className="text-center py-8 text-[#888] text-xs">找不到任何 TravelApp_ 開頭的檔案</div>
+               ) : (
+                   <div className="space-y-1">
+                       {cloudFiles.map(file => (
+                           <button 
+                                key={file.id} 
+                                onClick={() => loadFromGoogleSheet(file.id, file.name)}
+                                disabled={isProcessingCloudFile}
+                                className={`w-full text-left p-3 rounded-lg hover:bg-[#F2F0EB] transition-colors flex items-center gap-3 group border border-transparent hover:${theme.border}`}
+                           >
+                               <div className={`w-8 h-8 rounded-full bg-[#E6F0F5] text-[#4A7C96] flex items-center justify-center shrink-0`}>
+                                   <FileSpreadsheet size={16} />
+                               </div>
+                               <div className="flex-1 min-w-0">
+                                   <div className="font-bold text-[#3A3A3A] text-sm truncate">{file.name.replace('TravelApp_', '').replace('.xlsx', '')}</div>
+                                   <div className="text-[10px] text-[#888]">{new Date(file.modifiedTime).toLocaleString()}</div>
+                               </div>
+                               {isProcessingCloudFile ? <Loader2 size={16} className="animate-spin text-[#A98467]"/> : <ChevronRight size={16} className="text-[#CCC] group-hover:text-[#A98467]" />}
+                           </button>
+                       ))}
+                   </div>
+               )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmAction && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/20 backdrop-blur-[2px]">
           <div className={`bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full border ${theme.border} animate-in zoom-in-95`}>
