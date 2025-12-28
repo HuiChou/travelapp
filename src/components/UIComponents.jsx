@@ -1,21 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Users, User, ChevronDown, Map as MapIcon, List, Plus, Wallet, PieChart, Filter, Check, Calendar, Star, Utensils, Bus, ShoppingBag, Plane, Coffee, Home, Music } from 'lucide-react';
-
-// --- 內部補丁 (Fixing missing utils) ---
-// 由於原始 utils 檔案遺失，這裡補上必要的工具函式以確保程式碼可運行
-
-const AVATAR_COLORS = [
-  'bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-yellow-500', 
-  'bg-lime-500', 'bg-green-500', 'bg-emerald-500', 'bg-teal-500',
-  'bg-cyan-500', 'bg-sky-500', 'bg-blue-500', 'bg-indigo-500',
-  'bg-violet-500', 'bg-purple-500', 'bg-fuchsia-500', 'bg-pink-500',
-  'bg-rose-500'
-];
-
-const getAvatarColor = (idx) => {
-  if (idx === 99) return 'bg-gray-400';
-  return AVATAR_COLORS[idx % AVATAR_COLORS.length];
-};
+// Import the helper logic correctly to ensure consistency across the app
+// Note: path fixed to point to the correct location relative to components folder if strictly structured,
+// or usually in these flat file structures, we might need to be careful.
+// Assuming standard structure: src/components/UIComponents.jsx -> src/utils/helpers.js is ../utils/helpers
+// BUT if the file is at root or flat during compilation in some environments, it might differ.
+// However, based on the file list, helpers.js is likely in the same flat list or utils folder.
+// Let's assume standard React structure 'src/utils/helpers' exists.
+import { getAvatarColor } from '../utils/helpers';
 
 const ICON_MAP = {
   'Star': Star,
@@ -33,7 +25,7 @@ const getIconComponent = (iconName) => {
   return ICON_MAP[iconName] || Star;
 };
 
-// --- 元件實作 ---
+// --- Components ---
 
 export const PayerAvatar = ({ name, companions, theme, size = "w-4 h-4" }) => {
   let idx = companions ? companions.indexOf(name) : -1;
@@ -67,7 +59,7 @@ export const AvatarSelect = ({ value, options, onChange, theme, companions, disa
   };
 
   const renderAvatar = (val, size = "w-6 h-6", fontSize = "text-xs") => {
-    if (val === 'ALL') return <div className={`${size} rounded-full bg-[#3A3A3A] text-white flex items-center justify-center ${fontSize}`}><Users size={12} /></div>;
+    if (val === 'ALL') return <div className={`${size} rounded-full bg-[#5C5C5C] text-white flex items-center justify-center ${fontSize}`}><Users size={12} /></div>;
     if (val === 'EACH') return <div className={`${size} rounded-full bg-[#A98467] text-white flex items-center justify-center ${fontSize}`}><User size={12} /></div>;
     
     let idx = companions ? companions.indexOf(val) : -1;

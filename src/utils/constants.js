@@ -23,11 +23,8 @@ export const ICON_REGISTRY = {
 export const getIconComponent = (iconName) => ICON_REGISTRY[iconName] || Camera;
 
 // --- Google API ---
-// 使用您的 Client ID
 export const GOOGLE_CLIENT_ID = "456137719976-dp4uin8ae10f332qbhqm447nllr2u4ec.apps.googleusercontent.com";
-
-// CRITICAL CHANGE: Changed scope to 'drive' to access files created manually (e.g., via "Make a copy")
-export const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive";
+export const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file";
 
 // --- Defaults ---
 export const DEFAULT_ITINERARY_CATEGORIES = [
@@ -56,9 +53,21 @@ export const CATEGORY_COLORS = [
   'bg-[#D6E4FF]', 'bg-[#D6FFD9]', 'bg-[#FFFBD6]', 'bg-[#EAD6FF]'
 ];
 
+// --- Morandi Color Palette for Avatars (質感莫蘭迪色系 - 增強差異化) ---
+// 重新挑選顏色，確保相鄰色系有足夠對比，避免過於相似
 export const AVATAR_COLORS = [
-  'bg-[#F4D5D5]', 'bg-[#C6D8B6]', 'bg-[#BDD7EE]', 
-  'bg-[#FDE6C6]', 'bg-[#E0D3DE]', 'bg-[#D8E2DC]',
+  'bg-[#A8B6BF]', // 霧霾藍 (Dusty Blue) - 冷色
+  'bg-[#D6C4C2]', // 藕粉色 (Pale Pinkish) - 暖色/粉
+  'bg-[#8C9E9E]', // 鼠尾草綠 (Sage Green) - 綠色系
+  'bg-[#C5B8A5]', // 卡其沙 (Sand/Khaki) - 黃色/大地系
+  'bg-[#B4A5A5]', // 煙燻玫瑰 (Muted Rose) - 深粉紅
+  'bg-[#9FA3A8]', // 冷灰色 (Cool Grey) - 中性色
+  'bg-[#B2A496]', // 灰褐色 (Taupe) - 棕色系
+  'bg-[#7D8F98]', // 岩石藍 (Slate Blue) - 深藍色系 (加強對比)
+  'bg-[#A99F98]', // 暖灰色 (Warm Grey) - 暖灰
+  'bg-[#9DA6A0]', // 青瓷灰 (Grey Green) - 淺綠灰
+  'bg-[#C8A6A6]', // 豆沙紅 (Bean Red) - 紅色系
+  'bg-[#9B8E8E]', // 芋泥灰 (Mauve Grey) - 紫色系
 ];
 
 export const COUNTRY_OPTIONS = [
@@ -171,3 +180,5 @@ export const THEMES = {
     selection: 'selection:bg-[#CCCCCC] selection:text-[#000000]'
   }
 };
+
+
