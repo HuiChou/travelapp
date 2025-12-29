@@ -209,7 +209,6 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   const companionsStr = ovMap["旅行人員"] || "Me";
   
   // FIX 1: 過濾保留字 (Filter out reserved keywords)
-  // 防止「均攤」、「各付」等關鍵字因為舊檔案錯誤而被解析為真實人員
   const reservedKeywords = ['均攤', '各付', '全員', 'ALL', 'EACH'];
   const newCompanions = companionsStr.split(",")
     .map(s => s.trim())
@@ -342,29 +341,71 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
 
           if (splitStr.includes("分攤:")) {
               const sharesPart = splitStr.replace("分攤:", "").trim();
-              shares = sharesPart.split(",").map(s => s.trim());
+              shares = sharesPart.split(",").map(s => s.trim()).filter(s => s); 
+              
+              // NEW: 簡易模式 - 自動擴展成員 & 排序
+              if (shares.includes('全員') || shares.includes('均攤')) {
+                   if (!shares.includes('全員')) shares.push('全員');
+                   newCompanions.forEach(c => { if (!shares.includes(c)) shares.push(c); });
+              }
+              if (shares.includes('各付')) {
+                   newCompanions.forEach(c => { if (!shares.includes(c)) shares.push(c); });
+              }
+              
+              // 排序: 讓 全員/各付 排在最前面
+              shares.sort((a, b) => {
+                  const isTagA = a === '全員' || a === '各付';
+                  const isTagB = b === '全員' || b === '各付';
+                  if (isTagA && !isTagB) return -1;
+                  if (!isTagA && isTagB) return 1;
+                  return 0;
+              });
+
               const shareAmount = Math.round(rawCost / shares.length);
               details = shares.map((s, idx) => ({ id: Date.now() + idx + Math.random(), payer: payer, target: s, amount: shareAmount }));
           } else {
                shares = [payer]; 
-               const parts = splitStr.split(",").map(s => s.trim());
-               if (parts.length > 0 && parts[0].includes(":")) {
+               const parts = splitStr.split(",").map(s => s.trim()).filter(s => s); 
+               
+               if (parts.length > 0 && (parts[0].includes(":") || parts[0].includes("："))) {
                    shares = [];
                    details = parts.map((p, idx) => {
-                       const [name, amt] = p.split(":").map(x => x.trim());
+                       const safeP = p.replace('：', ':');
+                       const [name, amt] = safeP.split(":").map(x => x ? x.trim() : "");
                        
-                       // FIX 2: 正確解析「均攤」與「各付」 (Map Chinese keywords to Logic IDs)
                        let targetName = name;
-                       // 新增: 明確將 '均攤' 轉回 'ALL'，防止它被識別為人名
                        if (name === '全員' || name === '均攤' || name === 'ALL') targetName = 'ALL';
                        else if (name === '各付' || name === 'EACH') targetName = 'EACH';
                        
-                       // Only add to shares list if it's a specific person (not special keywords)
-                       if (targetName !== 'ALL' && targetName !== 'EACH' && !shares.includes(targetName)) {
-                           shares.push(targetName);
+                       if (!targetName) targetName = 'Unknown'; 
+
+                       // 修正：卡片顯示用 (shares) 需包含「標籤」與「展開的成員」
+                       let displayLabel = null;
+                       if (targetName === 'ALL') displayLabel = '全員';
+                       else if (targetName === 'EACH') displayLabel = '各付';
+
+                       if (displayLabel) {
+                           // 1. 確保標籤(全員/各付)存在
+                           if (!shares.includes(displayLabel)) shares.push(displayLabel);
+                           
+                           // 2. 展開所有成員到 shares 清單中 (這就是自動偵測更新的關鍵)
+                           newCompanions.forEach(comp => {
+                               if (!shares.includes(comp)) shares.push(comp);
+                           });
+                       } else {
+                           if (!shares.includes(targetName)) shares.push(targetName);
                        }
                        
                        return { id: Date.now() + idx + Math.random(), payer: payer, target: targetName, amount: parseFloat(amt) || 0 }
+                   });
+
+                   // NEW: 排序 shares，確保標籤在最前面
+                   shares.sort((a, b) => {
+                       const isTagA = a === '全員' || a === '各付';
+                       const isTagB = b === '全員' || b === '各付';
+                       if (isTagA && !isTagB) return -1;
+                       if (!isTagA && isTagB) return 1;
+                       return 0;
                    });
                }
           }
@@ -428,4 +469,3 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
     googleDriveFileId: fileId
   };
 };
-

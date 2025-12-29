@@ -1,12 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Users, User, ChevronDown, Map as MapIcon, List, Plus, Wallet, PieChart, Filter, Check, Calendar, Star, Utensils, Bus, ShoppingBag, Plane, Coffee, Home, Music } from 'lucide-react';
 // Import the helper logic correctly to ensure consistency across the app
-// Note: path fixed to point to the correct location relative to components folder if strictly structured,
-// or usually in these flat file structures, we might need to be careful.
-// Assuming standard structure: src/components/UIComponents.jsx -> src/utils/helpers.js is ../utils/helpers
-// BUT if the file is at root or flat during compilation in some environments, it might differ.
-// However, based on the file list, helpers.js is likely in the same flat list or utils folder.
-// Let's assume standard React structure 'src/utils/helpers' exists.
 import { getAvatarColor } from '../utils/helpers';
 
 const ICON_MAP = {
@@ -121,7 +115,6 @@ export const CategorySelect = ({ value, options, onChange, theme, variant = 'def
   const isAll = value === 'all';
   const SelectedIcon = isAll ? Filter : getIconComponent(selectedCat?.icon || 'Star');
 
-  // ghost: 無邊框、背景透明 (用於複合式篩選列)
   const buttonClass = variant === 'ghost'
     ? `w-full h-full flex items-center gap-2 px-3 py-2 bg-transparent hover:bg-black/5 transition-all outline-none rounded-r-xl`
     : `w-full flex items-center gap-2 px-3 py-2 bg-white border ${theme.border} rounded-lg hover:border-[#A98467] transition-all shadow-sm`;
@@ -178,12 +171,73 @@ export const CategorySelect = ({ value, options, onChange, theme, variant = 'def
   );
 };
 
-// --- NEW: 複合式篩選器 (Date | Category) ---
-// 專家優化：將日期與類別整合在一個膠囊容器中，中間使用垂直線區隔
+// --- NEW: Payer/Person Filter Select (圖示+人名下拉選單) ---
+export const PersonSelect = ({ value, options, onChange, theme }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const isAll = value === 'all';
+
+  return (
+    <div className="relative min-w-[8rem]" ref={containerRef}>
+       <button 
+        type="button"
+        onClick={() => setIsOpen(!isOpen)} 
+        className={`w-full flex items-center gap-2 px-3 py-2 bg-white border ${theme.border} rounded-lg hover:border-[#A98467] transition-all shadow-sm h-10`}
+      >
+        {isAll ? (
+            <div className="w-5 h-5 rounded bg-[#EBE9E4] text-[#888] flex items-center justify-center shrink-0"><Users size={12} /></div>
+        ) : (
+            <PayerAvatar name={value} companions={options} theme={theme} size="w-5 h-5" />
+        )}
+        <span className="flex-1 text-left text-xs font-bold text-[#3A3A3A] truncate">
+            {isAll ? '所有代墊人' : value}
+        </span>
+        <ChevronDown size={14} className="text-[#CCC] shrink-0" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 w-full min-w-[150px] mt-1 bg-white border border-[#E0E0E0] rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
+            <button
+              type="button"
+              onClick={() => { onChange('all'); setIsOpen(false); }}
+              className={`w-full flex items-center gap-2 px-3 py-2.5 hover:bg-[#F7F5F0] transition-colors border-b border-[#F0F0F0] ${value === 'all' ? 'bg-[#F2F0EB]' : ''}`}
+            >
+              <div className="w-6 h-6 rounded bg-[#EBE9E4] text-[#888] flex items-center justify-center shrink-0"><Users size={14} /></div>
+              <span className="text-sm font-bold text-[#3A3A3A] flex-1 text-left">所有代墊人</span>
+              {value === 'all' && <Check size={14} className="text-[#A98467]" />}
+            </button>
+            {options.map(person => (
+                <button
+                key={person}
+                type="button"
+                onClick={() => { onChange(person); setIsOpen(false); }}
+                className={`w-full flex items-center gap-2 px-3 py-2.5 hover:bg-[#F7F5F0] transition-colors ${value === person ? 'bg-[#F2F0EB]' : ''}`}
+                >
+                    <PayerAvatar name={person} companions={options} theme={theme} size="w-6 h-6" />
+                    <span className="text-sm font-bold text-[#3A3A3A] flex-1 text-left">{person}</span>
+                    {value === person && <Check size={14} className="text-[#A98467]" />}
+                </button>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const CompositeFilter = ({ dateValue, onDateChange, dateOptions, categoryValue, onCategoryChange, categoryOptions, theme }) => {
   return (
     <div className={`flex items-center bg-white border ${theme.border} rounded-xl shadow-sm hover:shadow-md transition-shadow h-10`}>
-      {/* 1. 日期選擇區塊 */}
       <div className="relative group px-2 h-full flex items-center hover:bg-black/5 transition-colors rounded-l-xl border-r border-transparent">
         <Calendar size={14} className="text-[#888] ml-2 mr-1 shrink-0"/>
         <select
@@ -198,16 +252,14 @@ export const CompositeFilter = ({ dateValue, onDateChange, dateOptions, category
         <ChevronDown size={12} className="absolute right-2 text-[#CCC] pointer-events-none"/>
       </div>
 
-      {/* 2. 分隔線 (Visual Separator) */}
       <div className="w-px h-5 bg-[#E0E0E0] mx-0.5 shrink-0"></div>
 
-      {/* 3. 類別選擇區塊 (使用 Ghost 模式的 CategorySelect) */}
       <CategorySelect 
         value={categoryValue} 
         options={categoryOptions} 
         onChange={onCategoryChange} 
         theme={theme}
-        variant="ghost" // 啟用無邊框模式
+        variant="ghost" 
       />
     </div>
   );
