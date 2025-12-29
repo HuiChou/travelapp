@@ -74,7 +74,7 @@ export const AvatarSelect = ({ value, options, onChange, theme, companions, disa
         className={`w-full flex items-center gap-2 pl-2 pr-2 py-1.5 bg-white border-b ${theme.border} ${!disabled ? `hover:border-${theme.primary}` : ''} transition-all`}
       >
         {renderAvatar(value)}
-        <span className="flex-1 text-left text-sm font-bold text-[#3A3A3A] truncate">{getLabel(value)}</span>
+        <span className="flex-1 text-left text-sm font-bold text-[#3A3A3A] whitespace-nowrap">{getLabel(value)}</span>
         {!disabled && <ChevronDown size={12} className="text-[#CCC]" />}
       </button>
 
@@ -97,6 +97,86 @@ export const AvatarSelect = ({ value, options, onChange, theme, companions, disa
   );
 };
 
+// --- NEW: Payer Filter Select for Statistics ---
+export const PayerFilterSelect = ({ value, options, onChange, theme, companions, variant = 'default' }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef(null);
+  
+    useEffect(() => {
+      const handleClickOutside = (event) => {
+        if (containerRef.current && !containerRef.current.contains(event.target)) {
+          setIsOpen(false);
+        }
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+  
+    const isAll = value === 'all';
+    
+    const renderAvatar = (name, size = "w-5 h-5", fontSize = "text-[10px]") => {
+        let idx = companions ? companions.indexOf(name) : -1;
+        if (idx === -1) idx = 99;
+        return (
+          <div className={`${size} rounded-full ${getAvatarColor(idx)} border border-white flex items-center justify-center text-white ${fontSize} font-bold shadow-sm shrink-0`}>
+            {name ? name.charAt(0).toUpperCase() : '?'}
+          </div>
+        );
+    };
+
+    const buttonClass = variant === 'ghost'
+    ? `w-full h-full flex items-center gap-2 px-3 py-2 bg-transparent hover:bg-black/5 transition-all outline-none rounded-r-xl`
+    : `w-full flex items-center gap-2 px-3 py-2 bg-white border ${theme.border} rounded-lg hover:border-[#A98467] transition-all shadow-sm h-10`;
+
+    const containerClass = `relative ${variant === 'ghost' ? 'flex-1 min-w-0' : 'min-w-[9rem]'}`;
+
+    return (
+      <div className={containerClass} ref={containerRef}>
+         <button 
+          type="button"
+          onClick={() => setIsOpen(!isOpen)} 
+          className={buttonClass}
+        >
+          {isAll ? (
+               <div className="w-5 h-5 rounded bg-[#EBE9E4] text-[#888] flex items-center justify-center shrink-0"><Users size={12} /></div>
+          ) : (
+               renderAvatar(value)
+          )}
+          <span className="flex-1 text-left text-xs font-bold text-[#3A3A3A] whitespace-nowrap">
+              {isAll ? '所有人員' : value}
+          </span>
+          <ChevronDown size={14} className="text-[#CCC] shrink-0" />
+        </button>
+  
+        {isOpen && (
+          <div className={`absolute top-full w-full min-w-[140px] mt-1 bg-white border border-[#E0E0E0] rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100 ${variant === 'ghost' ? 'right-0' : 'left-0'}`}>
+              <button
+                type="button"
+                onClick={() => { onChange('all'); setIsOpen(false); }}
+                className={`w-full flex items-center gap-2 px-3 py-2.5 hover:bg-[#F7F5F0] transition-colors border-b border-[#F0F0F0] ${value === 'all' ? 'bg-[#F2F0EB]' : ''}`}
+              >
+                <div className="w-6 h-6 rounded bg-[#EBE9E4] text-[#888] flex items-center justify-center shrink-0"><Users size={14} /></div>
+                <span className="text-sm font-bold text-[#3A3A3A] flex-1 text-left">所有人員</span>
+                {value === 'all' && <Check size={14} className="text-[#A98467]" />}
+              </button>
+              {options.map(person => (
+                  <button
+                  key={person}
+                  type="button"
+                  onClick={() => { onChange(person); setIsOpen(false); }}
+                  className={`w-full flex items-center gap-2 px-3 py-2.5 hover:bg-[#F7F5F0] transition-colors ${value === person ? 'bg-[#F2F0EB]' : ''}`}
+                  >
+                      {renderAvatar(person, "w-6 h-6", "text-xs")}
+                      <span className="text-sm font-bold text-[#3A3A3A] flex-1 text-left">{person}</span>
+                      {value === person && <Check size={14} className="text-[#A98467]" />}
+                  </button>
+              ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
 export const CategorySelect = ({ value, options, onChange, theme, variant = 'default' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
@@ -116,7 +196,7 @@ export const CategorySelect = ({ value, options, onChange, theme, variant = 'def
   const SelectedIcon = isAll ? Filter : getIconComponent(selectedCat?.icon || 'Star');
 
   const buttonClass = variant === 'ghost'
-    ? `w-full h-full flex items-center gap-2 px-3 py-2 bg-transparent hover:bg-black/5 transition-all outline-none rounded-r-xl`
+    ? `w-full h-full flex items-center gap-2 px-3 py-2 bg-transparent hover:bg-black/5 transition-all outline-none rounded-none` // removed rounded-r-xl for middle position
     : `w-full flex items-center gap-2 px-3 py-2 bg-white border ${theme.border} rounded-lg hover:border-[#A98467] transition-all shadow-sm`;
 
   const containerClass = `relative ${variant === 'ghost' ? 'flex-1 min-w-0' : 'min-w-[8rem]'}`;
@@ -131,14 +211,14 @@ export const CategorySelect = ({ value, options, onChange, theme, variant = 'def
         <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${isAll ? 'bg-[#EBE9E4] text-[#888]' : `${theme.primaryBg} text-white`}`}>
             <SelectedIcon size={12} />
         </div>
-        <span className="flex-1 text-left text-xs font-bold text-[#3A3A3A] truncate">
+        <span className="flex-1 text-left text-xs font-bold text-[#3A3A3A] whitespace-nowrap">
             {isAll ? '所有類別' : selectedCat?.label}
         </span>
         <ChevronDown size={14} className="text-[#CCC] shrink-0" />
       </button>
 
       {isOpen && (
-        <div className={`absolute top-full w-full min-w-[150px] mt-1 bg-white border border-[#E0E0E0] rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100 ${variant === 'ghost' ? 'right-0' : 'left-0'}`}>
+        <div className={`absolute top-full w-full min-w-[150px] mt-1 bg-white border border-[#E0E0E0] rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100 ${variant === 'ghost' ? 'left-[-20px]' : 'left-0'}`}>
             <button
               type="button"
               onClick={() => { onChange('all'); setIsOpen(false); }}
@@ -171,73 +251,15 @@ export const CategorySelect = ({ value, options, onChange, theme, variant = 'def
   );
 };
 
-// --- NEW: Payer/Person Filter Select (圖示+人名下拉選單) ---
-export const PersonSelect = ({ value, options, onChange, theme }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const isAll = value === 'all';
-
-  return (
-    <div className="relative min-w-[8rem]" ref={containerRef}>
-       <button 
-        type="button"
-        onClick={() => setIsOpen(!isOpen)} 
-        className={`w-full flex items-center gap-2 px-3 py-2 bg-white border ${theme.border} rounded-lg hover:border-[#A98467] transition-all shadow-sm h-10`}
-      >
-        {isAll ? (
-            <div className="w-5 h-5 rounded bg-[#EBE9E4] text-[#888] flex items-center justify-center shrink-0"><Users size={12} /></div>
-        ) : (
-            <PayerAvatar name={value} companions={options} theme={theme} size="w-5 h-5" />
-        )}
-        <span className="flex-1 text-left text-xs font-bold text-[#3A3A3A] truncate">
-            {isAll ? '所有代墊人' : value}
-        </span>
-        <ChevronDown size={14} className="text-[#CCC] shrink-0" />
-      </button>
-
-      {isOpen && (
-        <div className="absolute top-full left-0 w-full min-w-[150px] mt-1 bg-white border border-[#E0E0E0] rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
-            <button
-              type="button"
-              onClick={() => { onChange('all'); setIsOpen(false); }}
-              className={`w-full flex items-center gap-2 px-3 py-2.5 hover:bg-[#F7F5F0] transition-colors border-b border-[#F0F0F0] ${value === 'all' ? 'bg-[#F2F0EB]' : ''}`}
-            >
-              <div className="w-6 h-6 rounded bg-[#EBE9E4] text-[#888] flex items-center justify-center shrink-0"><Users size={14} /></div>
-              <span className="text-sm font-bold text-[#3A3A3A] flex-1 text-left">所有代墊人</span>
-              {value === 'all' && <Check size={14} className="text-[#A98467]" />}
-            </button>
-            {options.map(person => (
-                <button
-                key={person}
-                type="button"
-                onClick={() => { onChange(person); setIsOpen(false); }}
-                className={`w-full flex items-center gap-2 px-3 py-2.5 hover:bg-[#F7F5F0] transition-colors ${value === person ? 'bg-[#F2F0EB]' : ''}`}
-                >
-                    <PayerAvatar name={person} companions={options} theme={theme} size="w-6 h-6" />
-                    <span className="text-sm font-bold text-[#3A3A3A] flex-1 text-left">{person}</span>
-                    {value === person && <Check size={14} className="text-[#A98467]" />}
-                </button>
-            ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-export const CompositeFilter = ({ dateValue, onDateChange, dateOptions, categoryValue, onCategoryChange, categoryOptions, theme }) => {
+export const CompositeFilter = ({ 
+    dateValue, onDateChange, dateOptions, 
+    categoryValue, onCategoryChange, categoryOptions, 
+    payerValue, onPayerChange, payerOptions, companions,
+    theme 
+}) => {
   return (
     <div className={`flex items-center bg-white border ${theme.border} rounded-xl shadow-sm hover:shadow-md transition-shadow h-10`}>
+      {/* Date Filter */}
       <div className="relative group px-2 h-full flex items-center hover:bg-black/5 transition-colors rounded-l-xl border-r border-transparent">
         <Calendar size={14} className="text-[#888] ml-2 mr-1 shrink-0"/>
         <select
@@ -251,15 +273,30 @@ export const CompositeFilter = ({ dateValue, onDateChange, dateOptions, category
         </select>
         <ChevronDown size={12} className="absolute right-2 text-[#CCC] pointer-events-none"/>
       </div>
-
+      
+      {/* Divider */}
       <div className="w-px h-5 bg-[#E0E0E0] mx-0.5 shrink-0"></div>
-
+      
+      {/* Category Filter */}
       <CategorySelect 
         value={categoryValue} 
         options={categoryOptions} 
         onChange={onCategoryChange} 
         theme={theme}
         variant="ghost" 
+      />
+
+      {/* Divider */}
+      <div className="w-px h-5 bg-[#E0E0E0] mx-0.5 shrink-0"></div>
+
+      {/* Payer Filter (New) */}
+      <PayerFilterSelect 
+        value={payerValue}
+        options={payerOptions}
+        onChange={onPayerChange}
+        theme={theme}
+        companions={companions}
+        variant="ghost"
       />
     </div>
   );

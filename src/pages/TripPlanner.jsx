@@ -117,11 +117,11 @@ const TripPlanner = ({
   const loadFromGoogleSheet = async (fileId, fileName) => {
       setIsProcessingCloudFile(true);
       try {
-        // Expand Expense Range to include more columns (A:N)
+        // Expanded range for Expense to include Currency column (A:N)
         const ranges = [
             "專案概覽!A:B", 
             "行程表!A:H", 
-            "費用!A:N", // Expanded for new columns
+            "費用!A:N", 
             "管理類別!A:E", 
             "行李!A:B", 
             "購物!A:F", 
@@ -233,12 +233,12 @@ const TripPlanner = ({
               const originalCurrency = isTWD ? 'TWD' : currencySettings.selectedCountry.currency;
               const rate = currencySettings.exchangeRate || 1;
               
-              // 換算旅遊幣金額 (如果是 TWD，除以匯率)
+              // 換算旅遊幣金額
               const travelCurrencyAmount = isTWD 
                   ? (originalAmount / rate)
                   : originalAmount;
               
-              // 換算台幣金額 (如果是外幣，乘以匯率)
+              // 換算台幣金額
               const twdAmount = isTWD
                   ? originalAmount
                   : (originalAmount * rate);
@@ -250,11 +250,11 @@ const TripPlanner = ({
                   item.title,
                   item.location,
                   item.payer,
-                  originalAmount, // 原始金額 (Raw)
+                  originalAmount, // 原始金額
                   originalCurrency, // 原始幣別
                   currencySettings.selectedCountry.currency, // 旅遊幣別 (固定)
-                  Math.round(travelCurrencyAmount * 100) / 100, // 旅遊幣金額 (保留小數)
-                  Math.round(twdAmount), // 台幣金額 (整數)
+                  Math.round(travelCurrencyAmount * 100) / 100, // 旅遊幣金額
+                  Math.round(twdAmount), // 台幣金額
                   splitText,
                   item.notes || ''
               ];
@@ -597,7 +597,6 @@ const TripPlanner = ({
         const wsItin = window.XLSX.utils.aoa_to_sheet([itinHeader, ...itinRows]);
         window.XLSX.utils.book_append_sheet(wb, wsItin, "行程表");
 
-        // Enhanced Expense Header for Excel
         const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "原始金額", "原始幣別", "旅遊幣別", "旅遊幣金額", "台幣金額", "分帳細節", "備註"];
         const expRows = expenses.map(item => {
             const cat = expenseCategories.find(c => c.id === item.category);
@@ -616,12 +615,10 @@ const TripPlanner = ({
             const originalCurrency = isTWD ? 'TWD' : currencySettings.selectedCountry.currency;
             const rate = currencySettings.exchangeRate || 1;
             
-            // 換算旅遊幣金額
             const travelCurrencyAmount = isTWD 
                 ? (originalAmount / rate) 
                 : originalAmount;
             
-            // 換算台幣金額
             const twdAmount = isTWD
                 ? originalAmount
                 : (originalAmount * rate);
@@ -633,11 +630,11 @@ const TripPlanner = ({
                 item.title,
                 item.location,
                 item.payer,
-                originalAmount, // 原始金額 (保持原樣，不論 TWD/Foreign)
-                originalCurrency, // 原始幣別
-                currencySettings.selectedCountry.currency, // 旅遊幣別
-                Math.round(travelCurrencyAmount * 100) / 100, // 旅遊幣金額
-                Math.round(twdAmount), // 台幣金額
+                originalAmount, 
+                originalCurrency, 
+                currencySettings.selectedCountry.currency, 
+                Math.round(travelCurrencyAmount * 100) / 100, 
+                Math.round(twdAmount), 
                 splitText,
                 item.notes || ''
             ];
@@ -814,8 +811,7 @@ const TripPlanner = ({
     }
 
     setEditingItem(item);
-    // 修正：編輯時不再自動換算，保持原始儲存的數值與幣別
-    // 這樣如果是 TWD 存入，顯示也是 TWD
+    // 編輯時不再自動換算，保持原始儲存的數值與幣別
     let displayCost = item.cost;
     let currentCostType = item.costType || 'FOREIGN';
     
@@ -857,8 +853,6 @@ const TripPlanner = ({
     let newItem = { ...formData, id: editingItem ? editingItem.id : Date.now() };
     
     // 核心修正：不再進行幣別換算儲存
-    // 如果是 TWD，就存原始 TWD 金額；如果是外幣，就存原始外幣金額
-    // 顯示時再根據 costType 決定如何顯示與計算
     if (formData.cost) {
       newItem.cost = parseFloat(formData.cost);
     } else {
@@ -922,13 +916,6 @@ const TripPlanner = ({
     const newCost = parseFloat(val) || 0;
     let newDetails = formData.details || [];
     
-    // When changing Total Cost, we need to redistribute.
-    // If details have 'EACH', it's complex because EACH means fixed amount per person.
-    // Simplified logic: If ANY target is EACH, we assume manual entry for that line is preferred,
-    // so we might not auto-distribute cleanly without more info.
-    // However, for standard UX, if user types Total, we distribute equally (default behavior).
-    // If they want "EACH", they should type in the detail line.
-    
     if (newDetails.length > 0) {
         const perLine = Math.floor(newCost / newDetails.length);
         const remainder = newCost - (perLine * newDetails.length);
@@ -939,17 +926,10 @@ const TripPlanner = ({
 
   const addSplitDetail = () => {
     const currentAllocated = (formData.details || []).reduce((sum, d) => {
-         // If target is EACH, the impact on Total Cost is amount * companions.length
-         // But for "Remaining" calculation, it's safer to just sum the displayed amounts for now 
-         // OR we should be consistent. 
-         // Let's stick to: Total Cost is the master. 
-         // When adding detail, we just add a row. User needs to adjust.
          return sum + (parseFloat(d.amount) || 0);
     }, 0);
     
     const totalCost = parseFloat(formData.cost) || 0;
-    // Note: If we have 'EACH' items, this logic of 'remaining' is tricky. 
-    // Simplified: Just add a row with 0 or remaining if simple sum.
     const remaining = Math.max(0, totalCost - currentAllocated);
     
     setFormData({ ...formData, details: [...(formData.details || []), { id: Date.now(), payer: 'Me', target: companions[0] || 'Me', amount: remaining }] });
@@ -974,16 +954,12 @@ const TripPlanner = ({
           return { ...d, ...updates };
       });
       
-      // OPTIMIZED: Auto-calculate Total Cost when detail amount changes
-      // This supports the "EACH" = Per Person logic.
+      // Auto-calculate Total Cost when detail amount changes
       let newCost = 0;
       updatedDetails.forEach(d => {
          if (d.target === 'EACH') {
-             // If target is EACH, the amount entered is per person.
-             // So total impact on cost is Amount * Companions Count
              newCost += (parseFloat(d.amount) || 0) * companions.length;
          } else {
-             // Standard: Amount is the total for that line
              newCost += (parseFloat(d.amount) || 0);
          }
       });
@@ -1028,9 +1004,6 @@ const TripPlanner = ({
 
     // 核心匯率轉換：統一轉為旅遊幣別 (Foreign) 進行統計
     const rate = currencySettings.exchangeRate || 1;
-    // 修正：現在 cost 是原始輸入值。
-    // 如果是 TWD，要除以匯率變成外幣。
-    // 如果是 Foreign，就是原本的 cost。
     const toForeign = (amount, type) => (type === 'TWD' ? (amount / rate) : amount);
 
     const filteredSourceExpenses = expenses.filter(exp => {
@@ -1048,10 +1021,6 @@ const TripPlanner = ({
     });
 
     filteredSourceExpenses.forEach(exp => {
-      // 統一將金額轉換為外幣進行統計
-      // 注意：這裡的 exp.cost 是總額。
-      // 當我們遍歷 details 時，我們會重新計算分攤。
-      // 但為了 categoryStats.real (真實總支出)，我們可以直接用總額。
       const amountForeign = toForeign(exp.cost || 0, exp.costType);
       const category = exp.category || 'other';
 
@@ -1064,7 +1033,6 @@ const TripPlanner = ({
 
       if (exp.details && exp.details.length > 0) {
           exp.details.forEach((d, idx) => {
-              // 分帳細項金額也需轉換
               const dAmountRaw = parseFloat(d.amount) || 0;
               const dAmountForeign = toForeign(dAmountRaw, exp.costType);
 
@@ -1073,28 +1041,20 @@ const TripPlanner = ({
               let currentPayers = payer === 'EACH' ? companions : [payer];
               let currentTargets = (target === 'ALL' || target === 'EACH') ? companions : [target];
               
-              // --- OPTIMIZED LOGIC FOR 'EACH' (各付) ---
               let totalLineCost = 0;
               let sharePerPerson = 0;
               let paidPerPerson = 0;
 
               if (target === 'EACH') {
-                  // DEFINITION CHANGE: If target is EACH, input amount is PER PERSON.
-                  // So total cost for this line = Amount * Number of People
                   sharePerPerson = dAmountForeign;
                   totalLineCost = sharePerPerson * currentTargets.length;
                   
                   if (payer === 'EACH') {
-                      // Everyone paid for themselves.
-                      // So 'paid' amount for each person = sharePerPerson
                       paidPerPerson = sharePerPerson;
                   } else {
-                      // One person (e.g. Me) paid for everyone's 'each' share.
-                      // So Payer paid the total sum.
                       paidPerPerson = totalLineCost / currentPayers.length;
                   }
               } else {
-                  // STANDARD LOGIC (ALL/Specific): Input amount is TOTAL for this line.
                   totalLineCost = dAmountForeign;
                   paidPerPerson = totalLineCost / currentPayers.length;
                   sharePerPerson = totalLineCost / currentTargets.length;
@@ -1109,7 +1069,7 @@ const TripPlanner = ({
                       personalExpensesList.push({
                            ...exp, 
                            id: `${exp.id}_${idx}_${c}`, 
-                           cost: sharePerPerson, // Always show what THIS person is responsible for
+                           cost: sharePerPerson, 
                            costType: 'FOREIGN', 
                            currency: currencySettings.selectedCountry.currency,
                            payer: c, 
@@ -1119,7 +1079,7 @@ const TripPlanner = ({
                         });
                   });
                   if (!categoryStats.personal[category]) categoryStats.personal[category] = 0;
-                  categoryStats.personal[category] += totalLineCost; // Using totalLineCost for category totals
+                  categoryStats.personal[category] += totalLineCost; 
               } else {
                   personalExpensesList.push({ 
                       ...exp, 
@@ -1139,7 +1099,6 @@ const TripPlanner = ({
       } else {
           const payer = exp.payer || 'Unknown';
           getSafeStat(payer).paid += amountForeign;
-          // 個人消費清單中的單筆模式，直接使用計算後的外幣
           personalExpensesList.push({ 
               ...exp, 
               cost: amountForeign, 
@@ -1153,7 +1112,6 @@ const TripPlanner = ({
       }
     });
     
-    // 計算餘額與債務 (所有數字皆為外幣)
     Object.keys(personStats).forEach(p => personStats[p].balance = personStats[p].paid - personStats[p].share);
     const transactions = solveDebts(personStats);
     
@@ -1214,7 +1172,8 @@ const TripPlanner = ({
          const categoryTotalTWD = categoryTotalForeign * rate;
 
          categoryHeader = (
-           <div className={`sticky top-0 z-10 ${theme.bg}/95 backdrop-blur-sm py-2 px-1 mb-2 mt-4 border-b ${theme.border} flex justify-between items-center animate-in fade-in first:mt-0`}>
+           // FIXED: Changed bg to theme.card to match container, adjusted mt/py for list view
+           <div className={`sticky top-0 z-10 ${theme.card}/95 backdrop-blur-sm py-2 mb-2 mt-4 border-b ${theme.border} flex justify-between items-center animate-in fade-in first:mt-0`}>
              <div className={`text-sm font-bold ${theme.primary} flex items-center gap-2`}><CatIcon size={16} /> {categoryDef.label}</div>
              <div className="text-right">
                 <div className={`text-xs font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(categoryTotalForeign)}</div>
@@ -1227,7 +1186,8 @@ const TripPlanner = ({
        return (
          <React.Fragment key={exp.id}>
            {categoryHeader}
-           <div className={`${theme.card} p-3 rounded-xl border ${theme.border} flex justify-between items-center shadow-sm`}>
+           {/* FIXED: Changed from individual card to list item style (border-b) */}
+           <div className={`py-3 flex justify-between items-center ${index !== sortedExpenses.length - 1 ? `border-b ${theme.border}` : ''}`}>
              <div className="flex items-center gap-3">
                <div className={`w-8 h-8 rounded-full ${theme.hover} flex items-center justify-center ${theme.primary} shrink-0`}><ItemIcon size={16} /></div>
                <div className="flex-1 min-w-0">
@@ -1274,8 +1234,6 @@ const TripPlanner = ({
         if (!grouped[region]) grouped[region] = [];
         grouped[region].push(item);
     });
-    // Sort regions alphabetically or keep natural order? Natural order of appearance is often better for simple lists, but sorted is nice.
-    // Let's sort keys to be deterministic.
     return Object.keys(grouped).sort().reduce((obj, key) => { 
         obj[key] = grouped[key]; 
         return obj;
@@ -1400,6 +1358,12 @@ const TripPlanner = ({
                     categoryValue={statsCategoryFilter}
                     onCategoryChange={setStatsCategoryFilter}
                     categoryOptions={expenseCategories}
+                    
+                    payerValue={statsPersonFilter}
+                    onPayerChange={setStatsPersonFilter}
+                    payerOptions={companions}
+                    companions={companions}
+                    
                     theme={theme}
                 />
 
@@ -1515,12 +1479,19 @@ const TripPlanner = ({
                 </div>
             )}
 
-            <div className="space-y-3"><h3 className="text-sm font-bold text-[#888] pl-1">詳細清單</h3>{renderDetailedList()}</div>
+            {/* FIXED: Detailed List now wrapped in white card to match other sections */}
+            <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
+              <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2">
+                <List size={16} /> 詳細清單
+              </h3>
+              <div className="space-y-0">
+                {renderDetailedList()}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="space-y-3 relative">
             {viewMode === 'itinerary' && <div className={`absolute left-[4.5rem] top-4 bottom-4 w-px ${theme.border} -z-10`}></div>}
-            {/* UPDATED: Grouped Checklist Rendering for specific tabs */}
             {(viewMode === 'checklist' && (checklistTab === 'shopping' || checklistTab === 'food' || checklistTab === 'sightseeing')) ? (
                 Object.entries(groupListByRegion(getCurrentList())).map(([region, items]) => (
                     <div key={region} className="animate-in fade-in">
@@ -1536,7 +1507,6 @@ const TripPlanner = ({
                                         <div className="flex-1 min-w-0">
                                             <div className="flex justify-between items-start gap-2">
                                                 <div className="flex items-center gap-2 flex-wrap">
-                                                    {/* UPDATED: CheckList Title Style to match Itinerary */}
                                                     <h3 className={`text-xl font-bold font-serif leading-tight hover:${theme.primary} transition-colors ${item.completed ? 'text-[#AAA] line-through' : 'text-[#3A3A3A]'}`} onClick={(e) => { e.stopPropagation(); openEditModal(item); }}>{item.title}</h3>
                                                     {item.image && <a href={item.image.link} target="_blank" className="text-[#888] hover:text-[#5F6F52] transition-colors" title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}
                                                     <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.title, item.id + '_title'); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder} opacity-0 group-hover:opacity-100 transition-opacity shrink-0`} title="複製標題">{copiedId === (item.id + '_title') ? <Check size={12} className={theme.primary} /> : <Copy size={12} />}</button>
@@ -1547,7 +1517,6 @@ const TripPlanner = ({
                                                 {item.location && (
                                                     <div className={`flex items-center gap-1 group/location -ml-1.5 px-1.5 py-0.5 rounded ${theme.hover} transition-colors w-fit`}>
                                                         <MapPin size={12} className={theme.accent} />
-                                                        {/* UPDATED: CheckList Location Style to match Itinerary (text-xs text-[#666666]) */}
                                                         <span className="text-xs text-[#666666]">{item.location}</span>
                                                         <div className="flex gap-2 ml-1 opacity-0 group-hover/location:opacity-100 transition-opacity">
                                                             <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.location, item.id); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder}`} title="複製地址">
@@ -1570,14 +1539,11 @@ const TripPlanner = ({
                     </div>
                 ))
             ) : (
-            // Default Rendering for Expense, Packing, Itinerary
             getCurrentList().map((item, index) => {
               if (viewMode === 'expenses') {
                 const categoryDef = expenseCategories.find(c => c.id === item.category) || { label: '未分類', icon: 'Coins' };
                 const Icon = getIconComponent(categoryDef.icon);
                 
-                // 列表模式顯示修正
-                // 根據 costType 決定主顯示和括號內顯示
                 let mainAmount, subAmount;
                 const rate = currencySettings.exchangeRate || 1;
 
@@ -1860,7 +1826,6 @@ const TripPlanner = ({
                     <p className="text-[10px] text-[#AAA] mt-2 pl-1">* 照片將儲存於雲端 "TravelApp" 資料夾，並以標題自動命名。</p>
                 </div>
 
-                {/* 3. Expense Form - Allow Notes for Expenses */}
                 {(viewMode === 'itinerary' || viewMode === 'expenses' || checklistTab !== 'packing') && (
                   <div><label className="block text-xs font-bold text-[#888] mb-1">備註</label><textarea rows={2} placeholder="備註..." value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-3 text-base text-[#666] resize-none focus:outline-none focus:${theme.primaryBorder}`} /></div>
                 )}
