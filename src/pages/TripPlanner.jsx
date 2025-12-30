@@ -867,13 +867,44 @@ const TripPlanner = ({
 
     if (viewMode === 'expenses') {
       newItem.currency = currencySettings.selectedCountry.currency;
-      if (newItem.details && newItem.details.length > 0) {
+
+      // ---------------------------------------------------------
+      // 優化：若沒有設定分攤細節 (details 為空)，則預設為「每人各付各的」
+      // ---------------------------------------------------------
+      if (!newItem.details || newItem.details.length === 0) {
+         const unitCost = newItem.cost; // 輸入的金額視為「每人」的金額
+         
+         // 自動產生所有旅伴的各付各紀錄
+         newItem.details = companions.map((person, index) => ({
+             id: Date.now() + index + Math.random(), // 確保 ID 唯一
+             payer: person,
+             target: person,
+             amount: unitCost
+         }));
+
+         // 更新卡片總金額為 (單人金額 * 人數)
+         newItem.cost = unitCost * companions.length;
+         
+         // 設定顯示用的主要付款人 (通常列表顯示第一位)
+         newItem.payer = companions[0];
+         
+         // 設定分攤對象為所有人
+         newItem.shares = [...companions];
+      } 
+      // ---------------------------------------------------------
+      // 原有邏輯：若已有設定分攤細節
+      // ---------------------------------------------------------
+      else if (newItem.details && newItem.details.length > 0) {
          newItem.payer = newItem.details[0].payer;
          const targets = new Set();
-         newItem.details.forEach(d => { if (d.target === 'ALL' || d.target === 'EACH') companions.forEach(c => targets.add(c)); else targets.add(d.target); });
+         newItem.details.forEach(d => { 
+             if (d.target === 'ALL' || d.target === 'EACH') companions.forEach(c => targets.add(c)); 
+             else targets.add(d.target); 
+         });
          newItem.shares = Array.from(targets);
       }
     }
+    
     if (viewMode === 'itinerary') newItem.duration = parseInt(formData.duration) || 0;
     
     let list = viewMode === 'expenses' ? [...expenses] : [...getCurrentList()];
@@ -2037,6 +2068,7 @@ const TripPlanner = ({
           </div>
         </div>
       )}
+
 
       {confirmAction && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/20 backdrop-blur-[2px]">
