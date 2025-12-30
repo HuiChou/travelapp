@@ -117,7 +117,6 @@ const TripPlanner = ({
   const loadFromGoogleSheet = async (fileId, fileName) => {
       setIsProcessingCloudFile(true);
       try {
-        // Expanded range for Expense to include Currency column (A:N)
         const ranges = [
             "專案概覽!A:B", 
             "行程表!A:H", 
@@ -214,7 +213,6 @@ const TripPlanner = ({
           });
           const itinValues = [itinHeader, ...itinRows];
 
-          // Enhanced Expense Header
           const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "原始金額", "原始幣別", "旅遊幣別", "旅遊幣金額", "台幣金額", "分帳細節", "備註"];
           const expRows = expenses.map(item => {
               const cat = expenseCategories.find(c => c.id === item.category);
@@ -233,12 +231,10 @@ const TripPlanner = ({
               const originalCurrency = isTWD ? 'TWD' : currencySettings.selectedCountry.currency;
               const rate = currencySettings.exchangeRate || 1;
               
-              // 換算旅遊幣金額
               const travelCurrencyAmount = isTWD 
                   ? (originalAmount / rate)
                   : originalAmount;
               
-              // 換算台幣金額
               const twdAmount = isTWD
                   ? originalAmount
                   : (originalAmount * rate);
@@ -250,11 +246,11 @@ const TripPlanner = ({
                   item.title,
                   item.location,
                   item.payer,
-                  originalAmount, // 原始金額
-                  originalCurrency, // 原始幣別
-                  currencySettings.selectedCountry.currency, // 旅遊幣別 (固定)
-                  Math.round(travelCurrencyAmount * 100) / 100, // 旅遊幣金額
-                  Math.round(twdAmount), // 台幣金額
+                  originalAmount, 
+                  originalCurrency, 
+                  currencySettings.selectedCountry.currency, 
+                  Math.round(travelCurrencyAmount * 100) / 100, 
+                  Math.round(twdAmount), 
                   splitText,
                   item.notes || ''
               ];
@@ -995,18 +991,8 @@ const TripPlanner = ({
 
   // --- Statistics Logic (EXPERT OPTIMIZATION) ---
   const statisticsData = useMemo(() => {
-    const personStats = {};
-    companions.forEach(c => { personStats[c] = { paid: 0, share: 0, balance: 0 }; });
-    const getSafeStat = (name) => { if (!personStats[name]) personStats[name] = { paid: 0, share: 0, balance: 0 }; return personStats[name]; };
-    const categoryStats = { real: {}, personal: {} };
-    let personalExpensesList = [];
-    const dailyTotals = {}; 
-
-    // 核心匯率轉換：統一轉為旅遊幣別 (Foreign) 進行統計
-    const rate = currencySettings.exchangeRate || 1;
-    const toForeign = (amount, type) => (type === 'TWD' ? (amount / rate) : amount);
-
-    const filteredSourceExpenses = expenses.filter(exp => {
+    // 1. 基本過濾 (日期 & 類別) - 用於計算全域收支平衡 (personStats)
+    const baseExpenses = expenses.filter(exp => {
         let matchesDay = true;
         if (statsDayFilter !== 'all') {
             const dayIndex = parseInt(statsDayFilter);
@@ -1020,40 +1006,39 @@ const TripPlanner = ({
         return matchesDay && matchesCategory;
     });
 
-    filteredSourceExpenses.forEach(exp => {
-      const amountForeign = toForeign(exp.cost || 0, exp.costType);
-      const category = exp.category || 'other';
+    // 2. 計算全域成員收支 (基於目前的日期/類別篩選，但不考慮人員篩選)
+    // 這樣即使切換人員，上方的泡泡仍顯示該範圍內的總覽
+    const personStats = {};
+    companions.forEach(c => { personStats[c] = { paid: 0, share: 0, balance: 0 }; });
+    const getSafeStat = (name) => { if (!personStats[name]) personStats[name] = { paid: 0, share: 0, balance: 0 }; return personStats[name]; };
 
-      if (!categoryStats.real[category]) categoryStats.real[category] = 0;
-      categoryStats.real[category] += amountForeign;
+    // 匯率轉換
+    const rate = currencySettings.exchangeRate || 1;
+    const toForeign = (amount, type) => (type === 'TWD' ? (amount / rate) : amount);
 
-      const dateKey = exp.date;
-      if (!dailyTotals[dateKey]) dailyTotals[dateKey] = 0;
-      dailyTotals[dateKey] += amountForeign;
+    // 擴展後的個人消費列表 (用於個人模式)
+    let expandedConsumptionList = [];
+    // 擴展後的個人支付列表 (用於真實支付模式)
+    let expandedPaymentList = [];
 
+    baseExpenses.forEach(exp => {
+      // 2a. 計算收支平衡 (personStats)
       if (exp.details && exp.details.length > 0) {
           exp.details.forEach((d, idx) => {
               const dAmountRaw = parseFloat(d.amount) || 0;
               const dAmountForeign = toForeign(dAmountRaw, exp.costType);
-
-              let payer = d.payer || 'Unknown';
-              let target = d.target || 'Unknown';
-              let currentPayers = payer === 'EACH' ? companions : [payer];
-              let currentTargets = (target === 'ALL' || target === 'EACH') ? companions : [target];
+              
+              let currentPayers = d.payer === 'EACH' ? companions : [d.payer || 'Unknown'];
+              let currentTargets = (d.target === 'ALL' || d.target === 'EACH') ? companions : [d.target || 'Unknown'];
               
               let totalLineCost = 0;
               let sharePerPerson = 0;
               let paidPerPerson = 0;
 
-              if (target === 'EACH') {
+              if (d.target === 'EACH') {
                   sharePerPerson = dAmountForeign;
                   totalLineCost = sharePerPerson * currentTargets.length;
-                  
-                  if (payer === 'EACH') {
-                      paidPerPerson = sharePerPerson;
-                  } else {
-                      paidPerPerson = totalLineCost / currentPayers.length;
-                  }
+                  paidPerPerson = d.payer === 'EACH' ? sharePerPerson : (totalLineCost / currentPayers.length);
               } else {
                   totalLineCost = dAmountForeign;
                   paidPerPerson = totalLineCost / currentPayers.length;
@@ -1063,81 +1048,197 @@ const TripPlanner = ({
               currentPayers.forEach(p => getSafeStat(p).paid += paidPerPerson);
               currentTargets.forEach(t => getSafeStat(t).share += sharePerPerson);
 
-              // Personal Expenses List Construction
-              if (target === 'ALL' || target === 'EACH') {
+              // 2b. 建構個人支付列表 (expandedPaymentList) - 真實支付模式用
+              // 當付款人是 EACH 時，這裡會將其拆解成 N 筆支付記錄
+              if (d.payer === 'EACH') {
                   companions.forEach(c => {
-                      personalExpensesList.push({
+                      expandedPaymentList.push({
+                          ...exp,
+                          id: `${exp.id}_pay_${idx}_${c}`,
+                          cost: paidPerPerson,
+                          costType: 'FOREIGN',
+                          currency: currencySettings.selectedCountry.currency,
+                          payer: c,
+                          realPayer: c,
+                          isVirtual: true,
+                          noteSuffix: `(各付)`
+                      });
+                  });
+              } else {
+                  expandedPaymentList.push({
+                      ...exp,
+                      id: `${exp.id}_pay_${idx}`,
+                      cost: totalLineCost, // 該付款人支付了整行的總額
+                      costType: 'FOREIGN',
+                      currency: currencySettings.selectedCountry.currency,
+                      payer: d.payer,
+                      realPayer: d.payer,
+                      isVirtual: true,
+                      noteSuffix: ``
+                  });
+              }
+
+              // 2c. 建構個人消費列表 (expandedConsumptionList) - 個人消費模式用
+              if (d.target === 'ALL' || d.target === 'EACH') {
+                  companions.forEach(c => {
+                      expandedConsumptionList.push({
                            ...exp, 
-                           id: `${exp.id}_${idx}_${c}`, 
+                           id: `${exp.id}_cons_${idx}_${c}`, 
                            cost: sharePerPerson, 
                            costType: 'FOREIGN', 
                            currency: currencySettings.selectedCountry.currency,
-                           payer: c, 
-                           realPayer: (payer === 'EACH' ? c : payer), 
+                           payer: c, // 在個人模式下，'payer' 代表「消費者」
+                           realPayer: (d.payer === 'EACH' ? c : d.payer), 
                            isVirtual: true, 
-                           noteSuffix: `(${target === 'EACH' ? '各付' : '均攤'})` 
+                           noteSuffix: `(${d.target === 'EACH' ? '各付' : '均攤'})` 
                         });
                   });
-                  if (!categoryStats.personal[category]) categoryStats.personal[category] = 0;
-                  categoryStats.personal[category] += totalLineCost; 
               } else {
-                  personalExpensesList.push({ 
+                  expandedConsumptionList.push({ 
                       ...exp, 
-                      id: `${exp.id}_${idx}`, 
+                      id: `${exp.id}_cons_${idx}`, 
                       cost: sharePerPerson, 
                       costType: 'FOREIGN',
                       currency: currencySettings.selectedCountry.currency,
-                      payer: target, 
-                      realPayer: (payer === 'EACH' ? target : payer), 
+                      payer: d.target, // 在個人模式下，'payer' 代表「消費者」
+                      realPayer: (d.payer === 'EACH' ? d.target : d.payer), 
                       isVirtual: true, 
                       noteSuffix: `` 
                   });
-                  if (!categoryStats.personal[category]) categoryStats.personal[category] = 0;
-                  categoryStats.personal[category] += totalLineCost;
               }
           });
       } else {
+          // 無詳細分帳，簡易模式
+          const amountForeign = toForeign(exp.cost || 0, exp.costType);
           const payer = exp.payer || 'Unknown';
           getSafeStat(payer).paid += amountForeign;
-          personalExpensesList.push({ 
-              ...exp, 
-              cost: amountForeign, 
-              costType: 'FOREIGN',
-              currency: currencySettings.selectedCountry.currency,
-              realPayer: payer, 
-              payer: payer 
-          }); 
-          if (!categoryStats.personal[category]) categoryStats.personal[category] = 0;
-          categoryStats.personal[category] += amountForeign;
+          
+          const consumers = exp.shares && exp.shares.length > 0 ? exp.shares : [payer];
+          const perPersonCost = amountForeign / consumers.length;
+
+          consumers.forEach(c => {
+               if (c === '全員') { /* 已在上方處理 */ }
+               else { getSafeStat(c).share += perPersonCost; }
+          });
+          
+          // 簡易模式 - 支付列表
+          if (exp.payer === 'EACH') {
+              const perPersonPay = amountForeign / companions.length;
+              companions.forEach((c, idx) => {
+                  expandedPaymentList.push({
+                      ...exp,
+                      id: `${exp.id}_pay_simple_${idx}_${c}`,
+                      cost: perPersonPay,
+                      costType: 'FOREIGN',
+                      currency: currencySettings.selectedCountry.currency,
+                      payer: c,
+                      realPayer: c,
+                      isVirtual: true,
+                      noteSuffix: `(各付)`
+                  });
+              });
+          } else {
+              expandedPaymentList.push({
+                  ...exp,
+                  id: `${exp.id}_pay_simple`,
+                  cost: amountForeign,
+                  costType: 'FOREIGN',
+                  currency: currencySettings.selectedCountry.currency,
+                  payer: exp.payer,
+                  realPayer: exp.payer,
+                  isVirtual: true,
+                  noteSuffix: ``
+              });
+          }
+
+          // 簡易模式 - 消費列表
+          if (exp.shares && exp.shares.length > 0) {
+              exp.shares.forEach((shareName, sIdx) => {
+                   expandedConsumptionList.push({
+                       ...exp,
+                       id: `${exp.id}_cons_simple_${sIdx}`,
+                       cost: perPersonCost,
+                       costType: 'FOREIGN',
+                       currency: currencySettings.selectedCountry.currency,
+                       payer: shareName,
+                       realPayer: payer,
+                       isVirtual: true
+                   });
+              });
+          } else {
+              expandedConsumptionList.push({ 
+                   ...exp, 
+                   cost: amountForeign, 
+                   costType: 'FOREIGN',
+                   currency: currencySettings.selectedCountry.currency,
+                   payer: payer,
+                   realPayer: payer
+              });
+          }
       }
     });
     
+    // 計算結算建議
     Object.keys(personStats).forEach(p => personStats[p].balance = personStats[p].paid - personStats[p].share);
     const transactions = solveDebts(personStats);
-    
-    const sortedDailyTotals = Object.entries(dailyTotals).sort((a, b) => new Date(a[0]) - new Date(b[0])).map(([date, total]) => ({ date, total }));
 
-    return { personStats, categoryStats, transactions, personalExpensesList, sortedDailyTotals };
-  }, [expenses, companions, expenseCategories, statsDayFilter, statsCategoryFilter, tripSettings.startDate, currencySettings.exchangeRate]); 
+    // 3. 準備顯示用的列表 (根據 statsMode 選擇來源)
+    let displaySource = statsMode === 'real' ? expandedPaymentList : expandedConsumptionList;
 
-  const renderDetailedList = () => {
-    const sourceList = statsMode === 'real' ? expenses : statisticsData.personalExpensesList;
-    let filteredExpenses = sourceList.filter(e => {
-        let matchesDay = true;
-        if (statsDayFilter !== 'all') {
-            const dayIndex = parseInt(statsDayFilter);
-            const targetDate = formatDate(tripSettings.startDate, dayIndex).full;
-            matchesDay = e.date === targetDate;
+    // 4. 套用「人員篩選」(statsPersonFilter)
+    // 這是關鍵：在此階段過濾，讓後續的圖表與每日明細只反映該成員
+    let finalDisplayList = displaySource;
+    if (statsPersonFilter !== 'all') {
+        finalDisplayList = displaySource.filter(item => {
+            // 在 Real 模式：item.payer 是付款人 (若為 EACH 已被拆解成個別付款人)
+            // 在 Personal 模式：item.payer 是消費者 (已在上方 logic 設定)
+            return item.payer === statsPersonFilter;
+        });
+    }
+
+    // 5. 計算圖表與每日明細 (使用過濾後的 finalDisplayList)
+    const categoryStats = {};
+    const dailyTotals = {};
+
+    finalDisplayList.forEach(item => {
+        // 計算金額 (已經統一轉為外幣了，如果是 real 模式要注意原始幣別)
+        let amount = 0;
+        if (item.isVirtual) {
+            amount = item.cost; // 虛擬項目已經轉為 FOREIGN
+        } else {
+            amount = toForeign(item.cost || 0, item.costType);
         }
-        let matchesCategory = true;
-        if (statsCategoryFilter !== 'all') {
-            matchesCategory = e.category === statsCategoryFilter;
-        }
-        return matchesDay && matchesCategory;
+        
+        // 類別統計
+        const cat = item.category || 'other';
+        if (!categoryStats[cat]) categoryStats[cat] = 0;
+        categoryStats[cat] += amount;
+
+        // 每日明細
+        const dateKey = item.date;
+        if (!dailyTotals[dateKey]) dailyTotals[dateKey] = 0;
+        dailyTotals[dateKey] += amount;
     });
 
-    if (statsPersonFilter !== 'all') filteredExpenses = filteredExpenses.filter(e => e.payer === statsPersonFilter);
-    const sortedExpenses = sortExpensesByRegionAndCategory(filteredExpenses);
+    const sortedDailyTotals = Object.entries(dailyTotals)
+        .sort((a, b) => new Date(a[0]) - new Date(b[0]))
+        .map(([date, total]) => ({ date, total }));
+
+    // 排序最終顯示列表
+    finalDisplayList = sortExpensesByRegionAndCategory(finalDisplayList);
+
+    return { 
+        personStats, 
+        transactions, 
+        finalDisplayList, // 直接提供給 renderDetailedList 使用
+        categoryStats, 
+        sortedDailyTotals 
+    };
+  }, [expenses, companions, expenseCategories, statsDayFilter, statsCategoryFilter, statsPersonFilter, statsMode, tripSettings.startDate, currencySettings.exchangeRate]); 
+
+  const renderDetailedList = () => {
+    // 優化：直接使用 useMemo 計算好的 finalDisplayList，不再重複篩選
+    const sortedExpenses = statisticsData.finalDisplayList;
 
     if (sortedExpenses.length === 0) return <div className="text-center text-[#888] py-8 text-sm">無符合條件的資料</div>;
 
@@ -1149,12 +1250,13 @@ const TripPlanner = ({
 
        // 修正顯示邏輯：根據 costType 決定主顯示與副顯示
        let displayMain, displaySub;
-       if (exp.costType === 'TWD') {
+       if (exp.costType === 'TWD' && !exp.isVirtual) {
            const twdVal = exp.cost || 0;
            const foreignVal = twdVal / rate;
            displayMain = `TWD ${formatMoney(twdVal)}`;
            displaySub = `(${currencySettings.selectedCountry.currency} ${formatMoney(foreignVal)})`;
        } else {
+           // 虛擬項目或外幣項目
            const foreignVal = exp.cost || 0;
            const twdVal = foreignVal * rate;
            displayMain = `${exp.currency || currencySettings.selectedCountry.currency} ${formatMoney(foreignVal)}`;
@@ -1165,14 +1267,11 @@ const TripPlanner = ({
        
        if (index === 0 || currentCategory !== prevExp?.category) {
          const CatIcon = getIconComponent(categoryDef.icon);
-         const categoryTotalForeign = statsMode === 'real' 
-            ? (statisticsData.categoryStats.real[currentCategory] || 0) 
-            : (statisticsData.categoryStats.personal[currentCategory] || 0);
-         
+         // 使用新計算的 categoryStats (已包含人員篩選結果)
+         const categoryTotalForeign = statisticsData.categoryStats[currentCategory] || 0;
          const categoryTotalTWD = categoryTotalForeign * rate;
 
          categoryHeader = (
-           // FIXED: Changed bg to theme.card to match container, adjusted mt/py for list view
            <div className={`sticky top-0 z-10 ${theme.card}/95 backdrop-blur-sm py-2 mb-2 mt-4 border-b ${theme.border} flex justify-between items-center animate-in fade-in first:mt-0`}>
              <div className={`text-sm font-bold ${theme.primary} flex items-center gap-2`}><CatIcon size={16} /> {categoryDef.label}</div>
              <div className="text-right">
@@ -1186,20 +1285,19 @@ const TripPlanner = ({
        return (
          <React.Fragment key={exp.id}>
            {categoryHeader}
-           {/* FIXED: Changed from individual card to list item style (border-b) */}
            <div className={`py-3 flex justify-between items-center ${index !== sortedExpenses.length - 1 ? `border-b ${theme.border}` : ''}`}>
              <div className="flex items-center gap-3">
                <div className={`w-8 h-8 rounded-full ${theme.hover} flex items-center justify-center ${theme.primary} shrink-0`}><ItemIcon size={16} /></div>
                <div className="flex-1 min-w-0">
                  <div className="flex items-center gap-2">
-                    <div className="text-sm font-bold text-[#3A3A3A] font-serif truncate">{exp.title}</div>
+                    <div className="text-sm font-bold text-[#3A3A3A] font-serif truncate">{exp.title} {exp.noteSuffix && <span className="text-[10px] text-[#888] font-normal">{exp.noteSuffix}</span>}</div>
                     {exp.image && <a href={exp.image.link} target="_blank" className="text-[#888] hover:text-[#5F6F52]" onClick={e => e.stopPropagation()}><ImageIcon size={14}/></a>}
                  </div>
                  <div className="text-[10px] text-[#888] mt-1 flex flex-wrap gap-1 items-center">
                    {statsMode === 'personal' ? (
-                     <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.realPayer} companions={companions} theme={theme}/><span>{exp.realPayer}</span></span></>
+                     <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.realPayer} companions={companions} theme={theme}/><span>{exp.realPayer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.realPayer} companions={companions} theme={theme}/><span>{exp.realPayer}</span></span></>
                    ) : (
-                     <><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>分攤:</span>{exp.details && exp.details.some(d => d.target === 'ALL' || d.target === 'EACH') ? <span className={`${theme.hover} px-1 rounded ${theme.primary}`}>{exp.details.some(d=>d.target==='EACH')?'各付':'全員'}</span> : <span>{exp.shares ? exp.shares.length : 0}人</span>}</span></>
+                     <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>分攤:</span>{exp.details && exp.details.some(d => d.target === 'ALL' || d.target === 'EACH') ? <span className={`${theme.hover} px-1 rounded ${theme.primary}`}>{exp.details.some(d=>d.target==='EACH')?'各付':'全員'}</span> : <span>{exp.shares ? exp.shares.length : 0}人</span>}</span></>
                    )}
                  </div>
                </div>
@@ -1212,7 +1310,8 @@ const TripPlanner = ({
   };
 
   const getCategoryChartData = () => {
-    const data = statsMode === 'real' ? statisticsData.categoryStats.real : statisticsData.categoryStats.personal;
+    // 簡化：直接使用 statisticsData.categoryStats
+    const data = statisticsData.categoryStats;
     const chartData = Object.entries(data)
         .map(([catId, amount]) => {
             const catDef = expenseCategories.find(c => c.id === catId) || { label: '其他', icon: 'Coins' };
