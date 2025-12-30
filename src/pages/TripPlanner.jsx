@@ -287,6 +287,7 @@ const TripPlanner = ({
               setGoogleDriveFileId(targetFileId); 
           }
 
+          // 1. 確保所有 Sheet 都存在
           const ssMeta = await window.gapi.client.sheets.spreadsheets.get({ spreadsheetId: targetFileId });
           const existingSheetTitles = ssMeta.result.sheets.map(s => s.properties.title);
           const requiredSheets = ["專案概覽", "行程表", "費用", "管理類別", "行李", "購物", "美食", "景點"];
@@ -305,6 +306,14 @@ const TripPlanner = ({
               });
           }
 
+          // 2.【優化關鍵】先清除這些工作表的內容，確保「刪除」的資料不會殘留 (Ghost Rows)
+          const rangesToClear = requiredSheets.map(sheet => `${sheet}!A:Z`);
+          await window.gapi.client.sheets.spreadsheets.values.batchClear({
+              spreadsheetId: targetFileId,
+              resource: { ranges: rangesToClear }
+          });
+
+          // 3. 寫入最新的完整資料
           const dataBody = [
               { range: "專案概覽!A1", values: overviewValues },
               { range: "行程表!A1", values: itinValues },
