@@ -119,13 +119,13 @@ const TripPlanner = ({
       try {
         const ranges = [
             "專案概覽!A:B", 
-            "行程表!A:H", 
-            "費用!A:N", 
+            "行程表!A:J", // Expanded range for image columns
+            "費用!A:P",   // Expanded range for image columns
             "管理類別!A:E", 
             "行李!A:B", 
-            "購物!A:F", 
-            "美食!A:F", 
-            "景點!A:F"
+            "購物!A:H",   // Expanded range
+            "美食!A:H",   // Expanded range
+            "景點!A:H"    // Expanded range
         ];
         
         const response = await window.gapi.client.sheets.spreadsheets.values.batchGet({
@@ -192,7 +192,8 @@ const TripPlanner = ({
               ["旅行人員", companions.join(", ")]
           ];
 
-          const itinHeader = ["天數", "時間", "停留(分)", "類別", "標題", "地點", "預算", "備註"];
+          // 增加：圖片名稱, 圖片連結
+          const itinHeader = ["天數", "時間", "停留(分)", "類別", "標題", "地點", "預算", "備註", "圖片名稱", "圖片連結"];
           const itinRows = [];
           Object.keys(itineraries).sort((a,b)=>a-b).forEach(dayIndex => {
               const items = itineraries[dayIndex] || [];
@@ -207,13 +208,16 @@ const TripPlanner = ({
                       item.title,
                       item.location,
                       item.cost,
-                      item.notes
+                      item.notes,
+                      item.image ? item.title : "", // 使用標題作為圖片名稱
+                      item.image ? item.image.link : ""
                   ]);
               });
           });
           const itinValues = [itinHeader, ...itinRows];
 
-          const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "原始金額", "原始幣別", "旅遊幣別", "旅遊幣金額", "台幣金額", "分帳細節", "備註"];
+          // 增加：圖片名稱, 圖片連結
+          const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "原始金額", "原始幣別", "旅遊幣別", "旅遊幣金額", "台幣金額", "分帳細節", "備註", "圖片名稱", "圖片連結"];
           const expRows = expenses.map(item => {
               const cat = expenseCategories.find(c => c.id === item.category);
               let splitText = "";
@@ -252,7 +256,9 @@ const TripPlanner = ({
                   Math.round(travelCurrencyAmount * 100) / 100, 
                   Math.round(twdAmount), 
                   splitText,
-                  item.notes || ''
+                  item.notes || '',
+                  item.image ? item.title : "", // 使用標題作為圖片名稱
+                  item.image ? item.image.link : ""
               ];
           });
           const expValues = [expHeader, ...expRows];
@@ -267,14 +273,33 @@ const TripPlanner = ({
           const packingRows = packingList.map(i => [i.title, i.completed ? "已完成" : "未完成"]);
           const packingValues = [packingHeader, ...packingRows];
 
-          const shopHeader = ["地區", "物品", "地點", "預算", "狀態", "備註"];
-          const shopRows = shoppingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已購買" : "未購買", i.notes]);
+          // 購物/美食/景點 也增加圖片欄位
+          const shopHeader = ["地區", "物品", "地點", "預算", "狀態", "備註", "圖片名稱", "圖片連結"];
+          const shopRows = shoppingList.map(i => [
+              i.region, i.title, i.location, i.cost, 
+              i.completed ? "已購買" : "未購買", 
+              i.notes,
+              i.image ? i.title : "",
+              i.image ? i.image.link : ""
+          ]);
           const shopValues = [shopHeader, ...shopRows];
 
-          const foodRows = foodList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已吃" : "未吃", i.notes]);
+          const foodRows = foodList.map(i => [
+              i.region, i.title, i.location, i.cost, 
+              i.completed ? "已吃" : "未吃", 
+              i.notes,
+              i.image ? i.title : "",
+              i.image ? i.image.link : ""
+          ]);
           const foodValues = [shopHeader, ...foodRows];
 
-          const sightRows = sightseeingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已去" : "未去", i.notes]);
+          const sightRows = sightseeingList.map(i => [
+              i.region, i.title, i.location, i.cost, 
+              i.completed ? "已去" : "未去", 
+              i.notes,
+              i.image ? i.title : "",
+              i.image ? i.image.link : ""
+          ]);
           const sightValues = [shopHeader, ...sightRows];
 
           let targetFileId = googleDriveFileId;
@@ -287,7 +312,6 @@ const TripPlanner = ({
               setGoogleDriveFileId(targetFileId); 
           }
 
-          // 1. 確保所有 Sheet 都存在
           const ssMeta = await window.gapi.client.sheets.spreadsheets.get({ spreadsheetId: targetFileId });
           const existingSheetTitles = ssMeta.result.sheets.map(s => s.properties.title);
           const requiredSheets = ["專案概覽", "行程表", "費用", "管理類別", "行李", "購物", "美食", "景點"];
@@ -306,14 +330,12 @@ const TripPlanner = ({
               });
           }
 
-          // 2.【優化關鍵】先清除這些工作表的內容，確保「刪除」的資料不會殘留 (Ghost Rows)
           const rangesToClear = requiredSheets.map(sheet => `${sheet}!A:Z`);
           await window.gapi.client.sheets.spreadsheets.values.batchClear({
               spreadsheetId: targetFileId,
               resource: { ranges: rangesToClear }
           });
 
-          // 3. 寫入最新的完整資料
           const dataBody = [
               { range: "專案概覽!A1", values: overviewValues },
               { range: "行程表!A1", values: itinValues },
@@ -581,7 +603,8 @@ const TripPlanner = ({
         const wsOverview = window.XLSX.utils.aoa_to_sheet(overviewData);
         window.XLSX.utils.book_append_sheet(wb, wsOverview, "專案概覽");
 
-        const itinHeader = ["天數", "時間", "停留(分)", "類別", "標題", "地點", "預算", "備註"];
+        // 增加：圖片名稱, 圖片連結
+        const itinHeader = ["天數", "時間", "停留(分)", "類別", "標題", "地點", "預算", "備註", "圖片名稱", "圖片連結"];
         const itinRows = [];
         Object.keys(itineraries).sort((a,b)=>a-b).forEach(dayIndex => {
             const items = itineraries[dayIndex] || [];
@@ -595,14 +618,17 @@ const TripPlanner = ({
                     item.title,
                     item.location,
                     item.cost,
-                    item.notes
+                    item.notes,
+                    item.image ? item.title : "", 
+                    item.image ? item.image.link : ""
                 ]);
             });
         });
         const wsItin = window.XLSX.utils.aoa_to_sheet([itinHeader, ...itinRows]);
         window.XLSX.utils.book_append_sheet(wb, wsItin, "行程表");
 
-        const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "原始金額", "原始幣別", "旅遊幣別", "旅遊幣金額", "台幣金額", "分帳細節", "備註"];
+        // 增加：圖片名稱, 圖片連結
+        const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "原始金額", "原始幣別", "旅遊幣別", "旅遊幣金額", "台幣金額", "分帳細節", "備註", "圖片名稱", "圖片連結"];
         const expRows = expenses.map(item => {
             const cat = expenseCategories.find(c => c.id === item.category);
             let splitText = "";
@@ -641,7 +667,9 @@ const TripPlanner = ({
                 Math.round(travelCurrencyAmount * 100) / 100, 
                 Math.round(twdAmount), 
                 splitText,
-                item.notes || ''
+                item.notes || '',
+                item.image ? item.title : "",
+                item.image ? item.image.link : ""
             ];
         });
         const wsExp = window.XLSX.utils.aoa_to_sheet([expHeader, ...expRows]);
@@ -658,14 +686,16 @@ const TripPlanner = ({
         const packingRows = packingList.map(i => [i.title, i.completed ? "已完成" : "未完成"]);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([packingHeader, ...packingRows]), "行李");
 
-        const shopHeader = ["地區", "物品", "地點", "預算", "狀態", "備註"];
-        const shopRows = shoppingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已購買" : "未購買", i.notes]);
+        // 購物/美食/景點 也增加圖片欄位
+        const shopHeader = ["地區", "物品", "地點", "預算", "狀態", "備註", "圖片名稱", "圖片連結"];
+        
+        const shopRows = shoppingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已購買" : "未購買", i.notes, i.image ? i.title : "", i.image ? i.image.link : ""]);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([shopHeader, ...shopRows]), "購物");
         
-        const foodRows = foodList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已吃" : "未吃", i.notes]);
+        const foodRows = foodList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已吃" : "未吃", i.notes, i.image ? i.title : "", i.image ? i.image.link : ""]);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([shopHeader, ...foodRows]), "美食");
 
-        const sightRows = sightseeingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已去" : "未去", i.notes]);
+        const sightRows = sightseeingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已去" : "未去", i.notes, i.image ? i.title : "", i.image ? i.image.link : ""]);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([shopHeader, ...sightRows]), "景點");
 
         const fileName = `TravelApp_${tripSettings.title}.xlsx`;
@@ -1457,6 +1487,7 @@ const TripPlanner = ({
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-6 pb-24 md:px-6">
+        {/* Main Content Render Logic Here... (Unchanged sections omitted for brevity in thought, but full code provided here) */}
         {viewMode === 'categoryManager' ? (
           <div className="space-y-4 animate-in fade-in duration-300">
              <div className="flex justify-between items-center mb-2">
@@ -1483,6 +1514,7 @@ const TripPlanner = ({
              </div>
           </div>
         ) : viewMode === 'statistics' ? (
+            /* Statistics View (Unchanged) */
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex flex-wrap gap-2 items-center">
                 <CompositeFilter 
@@ -1619,7 +1651,6 @@ const TripPlanner = ({
                 </div>
             )}
 
-            {/* FIXED: Detailed List now wrapped in white card to match other sections */}
             <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
               <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2">
                 <List size={16} /> 詳細清單
@@ -1860,7 +1891,8 @@ const TripPlanner = ({
           </div>
         )}
       </main>
-
+      
+      {/* Modals and Bottom Nav (Omitted for brevity as they are unchanged) */}
       {viewMode !== 'statistics' && viewMode !== 'categoryManager' && (
         <button onClick={() => setViewMode('categoryManager')} className={`fixed bottom-24 right-6 w-14 h-14 bg-[#3A3A3A] text-[#F9F8F6] rounded-full shadow-lg shadow-[#3A3A3A]/30 hover:scale-105 ${theme.primaryBg} transition-all flex items-center justify-center z-50 animate-in zoom-in duration-300 group`} title="管理類別">
           <LayoutList size={26} strokeWidth={1.5} />
@@ -1868,7 +1900,8 @@ const TripPlanner = ({
       )}
 
       <BottomNav theme={theme} viewMode={viewMode} setViewMode={setViewMode} openAddModal={openAddModal} />
-
+      
+      {/* Category Edit Modal */}
       {isCategoryEditModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
           <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border} animate-in zoom-in-95`}>
@@ -1886,6 +1919,7 @@ const TripPlanner = ({
         </div>
       )}
 
+      {/* Main Item Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
           <div className={`bg-[#FDFCFB] w-full max-w-md rounded-xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 border ${theme.border}`}>
@@ -1975,7 +2009,8 @@ const TripPlanner = ({
           </div>
         </div>
       )}
-
+      
+      {/* Settings Modal (Unchanged - omitted) */}
       {isSettingsOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
           <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border} animate-in zoom-in-95`}>
@@ -1993,6 +2028,7 @@ const TripPlanner = ({
         </div>
       )}
 
+      {/* Currency Modal (Unchanged - omitted) */}
       {isCurrencyModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
           <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border}`}>
@@ -2008,6 +2044,7 @@ const TripPlanner = ({
         </div>
       )}
 
+      {/* Companion Modal (Unchanged - omitted) */}
       {isCompanionModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
           <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border}`}>
