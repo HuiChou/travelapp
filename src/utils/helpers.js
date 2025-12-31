@@ -189,6 +189,24 @@ export const generateNewProjectData = (title) => {
   };
 };
 
+// Helper to extract Drive File ID from URL
+const extractDriveId = (url) => {
+  if (!url) return null;
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : null;
+};
+
+// Helper to reconstruct image object
+const reconstructImage = (name, link) => {
+    if (!link) return null;
+    return {
+        id: extractDriveId(link), // Attempt to extract ID for deletion purposes
+        link: link,
+        name: name || 'Untitled Image',
+        thumbnail: link // Use link as thumbnail fallback
+    };
+};
+
 // --- Cloud Data Parser (Optimized for Header Detection) ---
 export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   const getSheetData = (rangeName) => {
@@ -255,6 +273,11 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   const itinData = getSheetData("行程表") || [];
   const newItineraries = {};
   if (itinData.length > 1) {
+      // Header Detection for Images
+      const headers = itinData[0] || [];
+      const imgNameIdx = headers.indexOf("圖片名稱");
+      const imgLinkIdx = headers.indexOf("圖片連結");
+
       for (let i=1; i<itinData.length; i++) {
           const row = itinData[i];
           if (!row[0]) continue;
@@ -266,6 +289,15 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
           const typeLabel = row[3];
           const typeId = itinLabelToId[typeLabel] || currentItinCats[0].id;
 
+          // Reconstruct Image Object
+          let imageObj = null;
+          if (imgLinkIdx !== -1 && row[imgLinkIdx]) {
+             imageObj = reconstructImage(
+                 imgNameIdx !== -1 ? row[imgNameIdx] : '',
+                 row[imgLinkIdx]
+             );
+          }
+
           newItineraries[dayIndex].push({
               id: Date.now() + Math.random() + i,
               type: typeId,
@@ -274,7 +306,8 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
               duration: parseInt(row[2]) || 60,
               location: row[5] || "",
               cost: parseFloat(row[6]) || 0,
-              notes: row[7] || ""
+              notes: row[7] || "",
+              image: imageObj
           });
       }
   }
@@ -303,7 +336,11 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
            currency: headers.indexOf("幣別"),
            
            split: headers.indexOf("分帳細節"),
-           notes: headers.indexOf("備註")
+           notes: headers.indexOf("備註"),
+
+           // Images
+           imgName: headers.indexOf("圖片名稱"),
+           imgLink: headers.indexOf("圖片連結")
        };
 
        for (let i=1; i<expenseData.length; i++) {
@@ -410,6 +447,15 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
                }
           }
 
+          // Image Reconstruction
+          let imageObj = null;
+          if (idx.imgLink !== -1 && row[idx.imgLink]) {
+              imageObj = reconstructImage(
+                  idx.imgName !== -1 ? row[idx.imgName] : '',
+                  row[idx.imgLink]
+              );
+          }
+
           newExpenses.push({
               id: Date.now() + Math.random() + i,
               date: row[idx.date],
@@ -423,16 +469,34 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
               costType: costType,     // Store logic type (TWD or FOREIGN)
               shares: shares,
               details: details,
-              notes: idx.notes !== -1 ? (row[idx.notes] || "") : ""
+              notes: idx.notes !== -1 ? (row[idx.notes] || "") : "",
+              image: imageObj
           });
        }
   }
 
-  // --- Parse Checklists ---
+  // --- Parse Checklists with Images ---
   const parseSimpleList = (sheetName, mapFn) => {
       const data = getSheetData(sheetName) || [];
       if (data.length <= 1) return [];
-      return data.slice(1).map(mapFn).filter(item => item !== null);
+      
+      const headers = data[0] || [];
+      const imgNameIdx = headers.indexOf("圖片名稱");
+      const imgLinkIdx = headers.indexOf("圖片連結");
+
+      return data.slice(1).map((row, i) => {
+         const baseItem = mapFn(row, i);
+         if (!baseItem) return null;
+
+         // Check for images in common simple lists
+         if (imgLinkIdx !== -1 && row[imgLinkIdx]) {
+             baseItem.image = reconstructImage(
+                 imgNameIdx !== -1 ? row[imgNameIdx] : '',
+                 row[imgLinkIdx]
+             );
+         }
+         return baseItem;
+      }).filter(item => item !== null);
   };
 
   const newPacking = parseSimpleList("行李", (row, i) => 
