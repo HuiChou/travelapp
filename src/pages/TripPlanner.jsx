@@ -1335,7 +1335,8 @@ const TripPlanner = ({
                  </div>
                  <div className="text-[10px] text-[#888] mt-1 flex flex-wrap gap-1 items-center">
                    {statsMode === 'personal' ? (
-                     <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.realPayer} companions={companions} theme={theme}/><span>{exp.realPayer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.realPayer} companions={companions} theme={theme}/><span>{exp.realPayer}</span></span></>
+                     // 核心優化：付款人顯示 exp.payer (自己/消費者)，代墊者顯示 exp.realPayer (實際出錢的人)
+                     <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.realPayer} companions={companions} theme={theme}/><span>{exp.realPayer}</span></span></>
                    ) : (
                      <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>分攤:</span>{exp.details && exp.details.some(d => d.target === 'ALL' || d.target === 'EACH') ? <span className={`${theme.hover} px-1 rounded ${theme.primary}`}>{exp.details.some(d=>d.target==='EACH')?'各付':'全員'}</span> : <span>{exp.shares ? exp.shares.length : 0}人</span>}</span></>
                    )}
