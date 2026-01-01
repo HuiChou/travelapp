@@ -10,7 +10,7 @@ import {
   Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
   Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2, RefreshCw, Printer,
   Calendar, Tag, ChevronDown, Divide, Filter, FileSpreadsheet, FilterX,
-  Image as ImageIcon, ExternalLink, ArrowDownCircle, Share2, UserPlus
+  Image as ImageIcon, ExternalLink, ArrowDownCircle, Share2, UserPlus, Mail, UserCog
 } from 'lucide-react';
 
 import { 
@@ -78,6 +78,9 @@ const TripPlanner = ({
   // Share/Collaboration State
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
+  // 新增: 儲存雲端協作人員名單
+  const [collaborators, setCollaborators] = useState([]);
+  const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(false);
 
   useEffect(() => {
     if (window.XLSX) {
@@ -115,6 +118,33 @@ const TripPlanner = ({
           console.error("Error fetching cloud files:", error);
       } finally {
           setIsLoadingCloudList(false);
+      }
+  };
+
+  // 新增: 讀取目前檔案的權限列表 (協作人員)
+  const fetchCollaborators = async () => {
+      if (!googleUser || !gapiInited || !googleDriveFileId) return;
+      
+      setIsLoadingCollaborators(true);
+      try {
+          // 呼叫 permissions.list API
+          const response = await window.gapi.client.drive.permissions.list({
+              fileId: googleDriveFileId,
+              fields: 'permissions(id, type, emailAddress, role, displayName, photoLink)',
+              pageSize: 20
+          });
+          
+          if (response.result && response.result.permissions) {
+              // 過濾出擁有編輯權限的人 (owner, writer, organizer)
+              const writers = response.result.permissions.filter(p => 
+                  ['owner', 'writer', 'organizer'].includes(p.role)
+              );
+              setCollaborators(writers);
+          }
+      } catch (error) {
+          console.error("Error fetching collaborators:", error);
+      } finally {
+          setIsLoadingCollaborators(false);
       }
   };
 
@@ -395,6 +425,9 @@ const TripPlanner = ({
 
         alert(`邀請發送成功！\n已將編輯權限分享給 ${email}`);
         setIsShareModalOpen(false);
+        
+        // 優化: 邀請成功後立即刷新協作人員列表
+        fetchCollaborators();
 
     } catch (error) {
         console.error("Share Error:", error);
@@ -1081,6 +1114,8 @@ const TripPlanner = ({
 
   const handleOpenCompanionModal = () => {
       setIsCompanionModalOpen(true);
+      // 打開 Modal 時嘗試讀取雲端權限
+      fetchCollaborators();
   };
 
   const handleOpenSettingsModal = () => {
@@ -2092,13 +2127,73 @@ const TripPlanner = ({
                   <div className="flex justify-between items-end mb-1.5"><label className="block text-xs font-bold text-[#888] uppercase">目前成員</label>{companions.length > 0 && <button type="button" onClick={handleClearAllCompanions} className={`text-[10px] text-[#C55A5A] hover:${theme.dangerBg} px-2 py-1 rounded flex items-center gap-1`}><Trash2 size={12} />全刪</button>}</div>
                   <div className={`bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 space-y-2 max-h-48 overflow-y-auto`}>{companions.length === 0 ? <div className="text-center py-4 text-[#AAA] text-xs">無</div> : companions.map((c, i) => (<div key={`${c}-${i}`} className={`flex items-center justify-between p-2 bg-white rounded shadow-sm border ${theme.border}`}><div className="flex items-center gap-3 flex-1 min-w-0"><div className={`w-8 h-8 rounded-full ${getAvatarColor(i)} flex items-center justify-center text-[#3A3A3A] text-sm font-bold font-serif shadow-sm border border-white`}>{c.charAt(0).toUpperCase()}</div>{editingCompanionIndex === i ? <input type="text" value={editingCompanionName} onChange={(e) => setEditingCompanionName(e.target.value)} className={`flex-1 border-b ${theme.primaryBorder} outline-none text-base text-[#3A3A3A] py-0.5 font-serif`} autoFocus onBlur={() => saveEditCompanion(i)} onKeyDown={(e) => {if(e.key==='Enter'){e.preventDefault();saveEditCompanion(i)}}} /> : <span className={`text-sm font-bold text-[#3A3A3A] truncate cursor-pointer hover:${theme.primary} font-serif`} onClick={() => startEditCompanion(i, c)}>{c}</span>}</div><div className="flex gap-1 ml-2">{editingCompanionIndex === i ? <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => saveEditCompanion(i)} className={`${theme.primary} hover:${theme.hover} p-1.5 rounded`}><Check size={14} /></button> : <button type="button" onClick={() => handleRemoveCompanion(i)} className={`text-[#C55A5A] hover:${theme.dangerBg} p-1.5 rounded`}><Minus size={14} /></button>}</div></div>))}</div>
                 </div>
-                {/* 增加提示 */}
-                <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => {setIsCompanionModalOpen(false); setIsShareModalOpen(true);}}>
-                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500"><UserPlus size={16}/></div>
-                    <div>
-                        <div className="text-xs font-bold text-slate-600">邀請其他人協作？</div>
-                        <div className="text-[10px] text-slate-400">點此發送 Google Drive 編輯權限邀請</div>
+                
+                {/* 增加提示 & 協作人員列表 (優化) */}
+                <div className="space-y-3">
+                    <div className="flex justify-between items-center mt-6 mb-1">
+                        <label className="block text-xs font-bold text-[#888] uppercase">雲端協作人員</label>
+                        <button type="button" onClick={() => {setIsCompanionModalOpen(false); setIsShareModalOpen(true);}} className={`text-[10px] ${theme.primary} hover:underline flex items-center gap-1`}>
+                            <UserPlus size={12}/> 邀請新成員
+                        </button>
                     </div>
+                    
+                    <div className="bg-[#F9F9F9] rounded-lg border border-[#EEE] divide-y divide-[#EEE]">
+                        {isLoadingCollaborators ? (
+                            <div className="p-4 flex justify-center text-[#999] text-xs gap-2"><Loader2 size={14} className="animate-spin"/> 讀取權限中...</div>
+                        ) : collaborators.length === 0 ? (
+                            <div className="p-4 text-center text-[#999] text-xs">暫無雲端協作人員</div>
+                        ) : (
+                            collaborators.map(user => {
+                                // 解析 UPN (例如 user@gmail.com -> user)
+                                const upn = user.emailAddress ? user.emailAddress.split('@')[0] : (user.displayName || 'Unknown');
+                                const isAdded = companions.includes(upn);
+                                
+                                return (
+                                    <div key={user.id} className="p-2 flex items-center justify-between group hover:bg-white transition-colors">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            {user.photoLink ? (
+                                                <img src={user.photoLink} alt={upn} className="w-8 h-8 rounded-full border border-white shadow-sm" />
+                                            ) : (
+                                                <div className="w-8 h-8 rounded-full bg-[#E0E0E0] flex items-center justify-center text-[#888] font-bold text-xs">
+                                                    {upn.charAt(0).toUpperCase()}
+                                                </div>
+                                            )}
+                                            <div className="min-w-0">
+                                                <div className="text-xs font-bold text-[#3A3A3A] truncate">{upn}</div>
+                                                <div className="text-[10px] text-[#999] truncate flex items-center gap-1">
+                                                    <Mail size={10}/> {user.emailAddress}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {isAdded ? (
+                                            <span className="text-[10px] text-[#999] flex items-center gap-1 px-2 py-1 bg-[#F0F0F0] rounded-full">
+                                                <CheckCircle2 size={10}/> 已加入
+                                            </span>
+                                        ) : (
+                                            <button 
+                                                type="button"
+                                                onClick={() => {
+                                                    if (upn && !companions.includes(upn)) {
+                                                        setCompanions([...companions, upn]);
+                                                    }
+                                                }}
+                                                className={`text-[10px] text-white ${theme.primaryBg} px-2 py-1 rounded-full hover:opacity-90 flex items-center gap-1 shadow-sm`}
+                                            >
+                                                <Plus size={10}/> 加入成員
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                    {/* 協作狀態提示 */}
+                    {collaborators.length > 0 && (
+                        <div className="flex items-start gap-1.5 p-2 rounded bg-orange-50 text-[10px] text-orange-700 leading-relaxed border border-orange-100">
+                            <UserCog size={14} className="shrink-0 mt-0.5"/>
+                            <span>擁有編輯權的 Google 帳號會顯示於上方。建議將其加入成員名單，以便進行分帳。</span>
+                        </div>
+                    )}
                 </div>
               </form>
             </div>
