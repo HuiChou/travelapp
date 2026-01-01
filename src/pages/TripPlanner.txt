@@ -10,7 +10,7 @@ import {
   Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
   Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2, RefreshCw, Printer,
   Calendar, Tag, ChevronDown, Divide, Filter, FileSpreadsheet, FilterX,
-  Image as ImageIcon, ExternalLink, ArrowDownCircle
+  Image as ImageIcon, ExternalLink, ArrowDownCircle, Share2, UserPlus, Mail, UserCog
 } from 'lucide-react';
 
 import { 
@@ -25,7 +25,7 @@ import {
     parseProjectDataFromGAPI 
 } from '../utils/helpers';
 
-import { BottomNav, PayerAvatar, AvatarSelect, CategorySelect, CompositeFilter } from '../components/UIComponents';
+import { BottomNav, PayerAvatar, AvatarSelect, CategorySelect, CompositeFilter, ShareModal } from '../components/UIComponents';
 
 const TripPlanner = ({ 
   projectData, 
@@ -75,6 +75,13 @@ const TripPlanner = ({
   const [driveFolderId, setDriveFolderId] = useState(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
+  // Share/Collaboration State
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isInviting, setIsInviting] = useState(false);
+  // 新增: 儲存雲端協作人員名單
+  const [collaborators, setCollaborators] = useState([]);
+  const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(false);
+
   useEffect(() => {
     if (window.XLSX) {
       setIsXlsxLoaded(true);
@@ -100,7 +107,7 @@ const TripPlanner = ({
           const q = "name contains 'TravelApp_' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false";
           const response = await window.gapi.client.drive.files.list({
               q: q,
-              fields: 'files(id, name, modifiedTime)',
+              fields: 'files(id, name, modifiedTime, owners)',
               orderBy: 'modifiedTime desc',
               pageSize: 20
           });
@@ -111,6 +118,33 @@ const TripPlanner = ({
           console.error("Error fetching cloud files:", error);
       } finally {
           setIsLoadingCloudList(false);
+      }
+  };
+
+  // 新增: 讀取目前檔案的權限列表 (協作人員)
+  const fetchCollaborators = async () => {
+      if (!googleUser || !gapiInited || !googleDriveFileId) return;
+      
+      setIsLoadingCollaborators(true);
+      try {
+          // 呼叫 permissions.list API
+          const response = await window.gapi.client.drive.permissions.list({
+              fileId: googleDriveFileId,
+              fields: 'permissions(id, type, emailAddress, role, displayName, photoLink)',
+              pageSize: 20
+          });
+          
+          if (response.result && response.result.permissions) {
+              // 過濾出擁有編輯權限的人 (owner, writer, organizer)
+              const writers = response.result.permissions.filter(p => 
+                  ['owner', 'writer', 'organizer'].includes(p.role)
+              );
+              setCollaborators(writers);
+          }
+      } catch (error) {
+          console.error("Error fetching collaborators:", error);
+      } finally {
+          setIsLoadingCollaborators(false);
       }
   };
 
@@ -342,9 +376,12 @@ const TripPlanner = ({
           
           if (!isSilent) alert(`同步成功！\n資料已寫入雲端檔案。\n(檔名: TravelApp_${tripSettings.title})`);
 
+          return targetFileId;
+
       } catch (error) {
           console.error("Error saving to Google Sheets:", error);
           if (!isSilent) alert("同步失敗，請檢查網路或權限。\n(請確保已重新登入並授予完整權限)");
+          return null;
       } finally {
           setIsSyncing(false);
           setIsAutoSaving(false);
@@ -356,6 +393,47 @@ const TripPlanner = ({
       alert("PDF 匯出功能 (模擬)");
     } catch (err) {
       console.error("PDF Export Error:", err);
+    }
+  };
+
+  // Share / Invite Logic
+  const handleInviteUser = async (email) => {
+    if (!googleUser || !gapiInited) {
+        alert("請先登入 Google 帳號。");
+        return;
+    }
+    
+    setIsInviting(true);
+    try {
+        // 1. Ensure file exists on cloud
+        let targetId = googleDriveFileId;
+        if (!targetId) {
+            targetId = await handleSaveToGoogleSheet(true);
+            if (!targetId) throw new Error("無法建立雲端檔案");
+        }
+
+        // 2. Create Permission
+        await window.gapi.client.drive.permissions.create({
+            fileId: targetId,
+            resource: {
+                role: 'writer',
+                type: 'user',
+                emailAddress: email
+            },
+            emailMessage: `我正在使用 Travel App 規劃「${tripSettings.title}」，邀請您一起協作編輯！`
+        });
+
+        alert(`邀請發送成功！\n已將編輯權限分享給 ${email}`);
+        setIsShareModalOpen(false);
+        
+        // 優化: 邀請成功後立即刷新協作人員列表
+        fetchCollaborators();
+
+    } catch (error) {
+        console.error("Share Error:", error);
+        alert("邀請失敗，請確認 Email 是否正確，或檢查網路連線。");
+    } finally {
+        setIsInviting(false);
     }
   };
 
@@ -1036,6 +1114,8 @@ const TripPlanner = ({
 
   const handleOpenCompanionModal = () => {
       setIsCompanionModalOpen(true);
+      // 打開 Modal 時嘗試讀取雲端權限
+      fetchCollaborators();
   };
 
   const handleOpenSettingsModal = () => {
@@ -1411,6 +1491,10 @@ const TripPlanner = ({
             <div className="flex gap-2 shrink-0 relative items-center">
               {googleUser && (<div className="hidden sm:flex items-center gap-1 mr-1">{isAutoSaving || isSyncing ? (<div className="flex items-center gap-1 text-[10px] text-[#A98467] font-bold"><Loader2 size={12} className="animate-spin"/> 儲存中</div>) : (<div className="flex items-center gap-1 text-[10px] text-[#5F6F52] font-bold opacity-70"><Cloud size={12}/> 已同步</div>)}</div>)}
               <button type="button" onClick={handleOpenCurrencyModal} className={`p-2 rounded-full flex items-center gap-1.5 border border-transparent hover:${theme.border} ${theme.hover} ${theme.accent}`}><Coins size={18} /><span className="text-[10px] font-bold hidden sm:inline-block">{currencySettings?.selectedCountry?.currency || 'JPY'}</span></button>
+              
+              {/* NEW SHARE BUTTON */}
+              <button type="button" onClick={() => setIsShareModalOpen(true)} className={`p-2 rounded-full transition-colors text-[#5F6F52] hover:bg-[#F2F0EB]`} title="邀請協作"><Share2 size={20} /></button>
+              
               <button type="button" onClick={handleOpenCompanionModal} className={`p-2 rounded-full transition-colors ${theme.subText} ${theme.hover}`}><Users size={20} /></button>
               <button type="button" onClick={handleOpenSettingsModal} className={`p-2 rounded-full transition-colors ${theme.subText} ${theme.hover}`}><Settings size={20} /></button>
               <div className="relative">
@@ -1472,6 +1556,7 @@ const TripPlanner = ({
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-6 pb-24 md:px-6">
+        {/* Same Main Content */}
         {viewMode === 'categoryManager' ? (
           <div className="space-y-4 animate-in fade-in duration-300">
              <div className="flex justify-between items-center mb-2">
@@ -1634,7 +1719,6 @@ const TripPlanner = ({
                 </div>
             )}
 
-            {/* FIXED: Detailed List now wrapped in white card to match other sections */}
             <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
               <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2">
                 <List size={16} /> 詳細清單
@@ -1884,6 +1968,15 @@ const TripPlanner = ({
 
       <BottomNav theme={theme} viewMode={viewMode} setViewMode={setViewMode} openAddModal={openAddModal} />
 
+      {/* Share Modal */}
+      <ShareModal 
+        isOpen={isShareModalOpen} 
+        onClose={() => setIsShareModalOpen(false)} 
+        onInvite={handleInviteUser}
+        isInviting={isInviting}
+        theme={theme}
+      />
+
       {isCategoryEditModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
           <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border} animate-in zoom-in-95`}>
@@ -2031,8 +2124,76 @@ const TripPlanner = ({
               <form id="companion-form" onSubmit={handleAddCompanion} className="space-y-5">
                 <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">新增成員</label><div className="flex gap-2"><input type="text" placeholder="名字..." value={newCompanionName} onChange={(e) => setNewCompanionName(e.target.value)} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /><button type="submit" className="bg-[#3A3A3A] text-white px-4 rounded-lg hover:opacity-90"><Plus size={20} /></button></div></div>
                 <div>
-                  <div className="flex justify-between items-end mb-1.5"><label className="block text-xs font-bold text-[#888] uppercase">目前成員</label>{companions.length > 0 && <button type="button" onClick={handleClearAllCompanions} className={`text-[10px] text-[#C55A5A] hover:${theme.dangerBg} px-2 py-1 rounded flex items-center gap-1`}><Trash2 size={12} />全て削除</button>}</div>
+                  <div className="flex justify-between items-end mb-1.5"><label className="block text-xs font-bold text-[#888] uppercase">目前成員</label>{companions.length > 0 && <button type="button" onClick={handleClearAllCompanions} className={`text-[10px] text-[#C55A5A] hover:${theme.dangerBg} px-2 py-1 rounded flex items-center gap-1`}><Trash2 size={12} />全刪</button>}</div>
                   <div className={`bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 space-y-2 max-h-48 overflow-y-auto`}>{companions.length === 0 ? <div className="text-center py-4 text-[#AAA] text-xs">無</div> : companions.map((c, i) => (<div key={`${c}-${i}`} className={`flex items-center justify-between p-2 bg-white rounded shadow-sm border ${theme.border}`}><div className="flex items-center gap-3 flex-1 min-w-0"><div className={`w-8 h-8 rounded-full ${getAvatarColor(i)} flex items-center justify-center text-[#3A3A3A] text-sm font-bold font-serif shadow-sm border border-white`}>{c.charAt(0).toUpperCase()}</div>{editingCompanionIndex === i ? <input type="text" value={editingCompanionName} onChange={(e) => setEditingCompanionName(e.target.value)} className={`flex-1 border-b ${theme.primaryBorder} outline-none text-base text-[#3A3A3A] py-0.5 font-serif`} autoFocus onBlur={() => saveEditCompanion(i)} onKeyDown={(e) => {if(e.key==='Enter'){e.preventDefault();saveEditCompanion(i)}}} /> : <span className={`text-sm font-bold text-[#3A3A3A] truncate cursor-pointer hover:${theme.primary} font-serif`} onClick={() => startEditCompanion(i, c)}>{c}</span>}</div><div className="flex gap-1 ml-2">{editingCompanionIndex === i ? <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => saveEditCompanion(i)} className={`${theme.primary} hover:${theme.hover} p-1.5 rounded`}><Check size={14} /></button> : <button type="button" onClick={() => handleRemoveCompanion(i)} className={`text-[#C55A5A] hover:${theme.dangerBg} p-1.5 rounded`}><Minus size={14} /></button>}</div></div>))}</div>
+                </div>
+                
+                {/* 增加提示 & 協作人員列表 (優化) */}
+                <div className="space-y-3">
+                    <div className="flex justify-between items-center mt-6 mb-1">
+                        <label className="block text-xs font-bold text-[#888] uppercase">雲端協作人員</label>
+                        <button type="button" onClick={() => {setIsCompanionModalOpen(false); setIsShareModalOpen(true);}} className={`text-[10px] ${theme.primary} hover:underline flex items-center gap-1`}>
+                            <UserPlus size={12}/> 邀請新成員
+                        </button>
+                    </div>
+                    
+                    <div className="bg-[#F9F9F9] rounded-lg border border-[#EEE] divide-y divide-[#EEE]">
+                        {isLoadingCollaborators ? (
+                            <div className="p-4 flex justify-center text-[#999] text-xs gap-2"><Loader2 size={14} className="animate-spin"/> 讀取權限中...</div>
+                        ) : collaborators.length === 0 ? (
+                            <div className="p-4 text-center text-[#999] text-xs">暫無雲端協作人員</div>
+                        ) : (
+                            collaborators.map(user => {
+                                // 解析 UPN (例如 user@gmail.com -> user)
+                                const upn = user.emailAddress ? user.emailAddress.split('@')[0] : (user.displayName || 'Unknown');
+                                const isAdded = companions.includes(upn);
+                                
+                                return (
+                                    <div key={user.id} className="p-2 flex items-center justify-between group hover:bg-white transition-colors">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            {user.photoLink ? (
+                                                <img src={user.photoLink} alt={upn} className="w-8 h-8 rounded-full border border-white shadow-sm" />
+                                            ) : (
+                                                <div className="w-8 h-8 rounded-full bg-[#E0E0E0] flex items-center justify-center text-[#888] font-bold text-xs">
+                                                    {upn.charAt(0).toUpperCase()}
+                                                </div>
+                                            )}
+                                            <div className="min-w-0">
+                                                <div className="text-xs font-bold text-[#3A3A3A] truncate">{upn}</div>
+                                                <div className="text-[10px] text-[#999] truncate flex items-center gap-1">
+                                                    <Mail size={10}/> {user.emailAddress}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {isAdded ? (
+                                            <span className="text-[10px] text-[#999] flex items-center gap-1 px-2 py-1 bg-[#F0F0F0] rounded-full">
+                                                <CheckCircle2 size={10}/> 已加入
+                                            </span>
+                                        ) : (
+                                            <button 
+                                                type="button"
+                                                onClick={() => {
+                                                    if (upn && !companions.includes(upn)) {
+                                                        setCompanions([...companions, upn]);
+                                                    }
+                                                }}
+                                                className={`text-[10px] text-white ${theme.primaryBg} px-2 py-1 rounded-full hover:opacity-90 flex items-center gap-1 shadow-sm`}
+                                            >
+                                                <Plus size={10}/> 加入成員
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                    {/* 協作狀態提示 */}
+                    {collaborators.length > 0 && (
+                        <div className="flex items-start gap-1.5 p-2 rounded bg-orange-50 text-[10px] text-orange-700 leading-relaxed border border-orange-100">
+                            <UserCog size={14} className="shrink-0 mt-0.5"/>
+                            <span>擁有編輯權的 Google 帳號會顯示於上方。建議將其加入成員名單，以便進行分帳。</span>
+                        </div>
+                    )}
                 </div>
               </form>
             </div>
@@ -2057,7 +2218,7 @@ const TripPlanner = ({
                ) : cloudFiles.length === 0 ? (
                    <div className="text-center py-8 text-[#888] text-xs">
                         找不到任何 TravelApp_ 開頭的檔案<br/>
-                        <span className="text-[10px] opacity-70">(僅支援 Google 試算表格式，不支援直接上傳的 .xlsx)</span>
+                        <span className="text-[10px] opacity-70">(僅支援 Google 試算表格式，且未被丟棄)</span>
                    </div>
                ) : (
                    <div className="space-y-1">
@@ -2073,7 +2234,11 @@ const TripPlanner = ({
                                </div>
                                <div className="flex-1 min-w-0">
                                    <div className="font-bold text-[#3A3A3A] text-sm truncate">{file.name.replace('TravelApp_', '').replace('.xlsx', '')}</div>
-                                   <div className="text-[10px] text-[#888]">{new Date(file.modifiedTime).toLocaleString()}</div>
+                                   <div className="flex justify-between items-center text-[10px] text-[#888]">
+                                        <span>{new Date(file.modifiedTime).toLocaleString()}</span>
+                                        {/* 顯示是否為他人分享 */}
+                                        {file.owners && !file.owners.some(o => o.me) && <span className="bg-orange-100 text-orange-600 px-1 rounded flex items-center gap-0.5"><Users size={8}/>共享</span>}
+                                   </div>
                                </div>
                                {isProcessingCloudFile ? <Loader2 size={16} className="animate-spin text-[#A98467]"/> : <ChevronRight size={16} className="text-[#CCC] group-hover:text-[#A98467]" />}
                            </button>
@@ -2084,7 +2249,6 @@ const TripPlanner = ({
           </div>
         </div>
       )}
-
 
       {confirmAction && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/20 backdrop-blur-[2px]">

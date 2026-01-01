@@ -153,13 +153,13 @@ const TripPlanner = ({
       try {
         const ranges = [
             "專案概覽!A:B", 
-            "行程表!A:J", // Expanded for image cols
-            "費用!A:P", // Expanded for image cols
+            "行程表!A:K", // Expanded for Region
+            "費用!A:P", 
             "管理類別!A:E", 
             "行李!A:B", 
-            "購物!A:H", // Expanded for image cols
-            "美食!A:H", // Expanded for image cols
-            "景點!A:H"  // Expanded for image cols
+            "購物!A:I", // Expanded for Website
+            "美食!A:I", // Expanded for Website
+            "景點!A:I"  // Expanded for Website
         ];
         
         const response = await window.gapi.client.sheets.spreadsheets.values.batchGet({
@@ -226,8 +226,8 @@ const TripPlanner = ({
               ["旅行人員", companions.join(", ")]
           ];
 
-          // Added Image Columns
-          const itinHeader = ["天數", "時間", "停留(分)", "類別", "標題", "地點", "預算", "備註", "圖片名稱", "圖片連結"];
+          // Added Region Column to Itinerary
+          const itinHeader = ["天數", "時間", "停留(分)", "地區", "類別", "標題", "地點", "預算", "備註", "圖片名稱", "圖片連結"];
           const itinRows = [];
           Object.keys(itineraries).sort((a,b)=>a-b).forEach(dayIndex => {
               const items = itineraries[dayIndex] || [];
@@ -238,6 +238,7 @@ const TripPlanner = ({
                       `Day ${parseInt(dayIndex) + 1}`,
                       item.time,
                       item.duration,
+                      item.region || '', // 新增地區
                       cat ? cat.label : item.type,
                       item.title,
                       item.location,
@@ -250,7 +251,6 @@ const TripPlanner = ({
           });
           const itinValues = [itinHeader, ...itinRows];
 
-          // Added Image Columns
           const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "原始金額", "原始幣別", "旅遊幣別", "旅遊幣金額", "台幣金額", "分帳細節", "備註", "圖片名稱", "圖片連結"];
           const expRows = expenses.map(item => {
               const cat = expenseCategories.find(c => c.id === item.category);
@@ -307,15 +307,15 @@ const TripPlanner = ({
           const packingRows = packingList.map(i => [i.title, i.completed ? "已完成" : "未完成"]);
           const packingValues = [packingHeader, ...packingRows];
 
-          // Added Image Columns to Lists
-          const shopHeader = ["地區", "物品", "地點", "預算", "狀態", "備註", "圖片名稱", "圖片連結"];
-          const shopRows = shoppingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已購買" : "未購買", i.notes, i.image?.name || '', i.image?.link || '']);
+          // Added Website Column to Lists
+          const shopHeader = ["地區", "物品", "地點", "預算", "狀態", "備註", "網站連結", "圖片名稱", "圖片連結"];
+          const shopRows = shoppingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已購買" : "未購買", i.notes, i.website || '', i.image?.name || '', i.image?.link || '']);
           const shopValues = [shopHeader, ...shopRows];
 
-          const foodRows = foodList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已吃" : "未吃", i.notes, i.image?.name || '', i.image?.link || '']);
+          const foodRows = foodList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已吃" : "未吃", i.notes, i.website || '', i.image?.name || '', i.image?.link || '']);
           const foodValues = [shopHeader, ...foodRows];
 
-          const sightRows = sightseeingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已去" : "未去", i.notes, i.image?.name || '', i.image?.link || '']);
+          const sightRows = sightseeingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已去" : "未去", i.notes, i.website || '', i.image?.name || '', i.image?.link || '']);
           const sightValues = [shopHeader, ...sightRows];
 
           let targetFileId = googleDriveFileId;
@@ -667,8 +667,8 @@ const TripPlanner = ({
         const wsOverview = window.XLSX.utils.aoa_to_sheet(overviewData);
         window.XLSX.utils.book_append_sheet(wb, wsOverview, "專案概覽");
 
-        // Added Image Columns
-        const itinHeader = ["天數", "時間", "停留(分)", "類別", "標題", "地點", "預算", "備註", "圖片名稱", "圖片連結"];
+        // Added Region Column to Itinerary
+        const itinHeader = ["天數", "時間", "停留(分)", "地區", "類別", "標題", "地點", "預算", "備註", "圖片名稱", "圖片連結"];
         const itinRows = [];
         Object.keys(itineraries).sort((a,b)=>a-b).forEach(dayIndex => {
             const items = itineraries[dayIndex] || [];
@@ -678,6 +678,7 @@ const TripPlanner = ({
                     `Day ${parseInt(dayIndex) + 1}`,
                     item.time,
                     item.duration,
+                    item.region || '', // 新增地區
                     cat ? cat.label : item.type,
                     item.title,
                     item.location,
@@ -691,7 +692,6 @@ const TripPlanner = ({
         const wsItin = window.XLSX.utils.aoa_to_sheet([itinHeader, ...itinRows]);
         window.XLSX.utils.book_append_sheet(wb, wsItin, "行程表");
 
-        // Added Image Columns
         const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "原始金額", "原始幣別", "旅遊幣別", "旅遊幣金額", "台幣金額", "分帳細節", "備註", "圖片名稱", "圖片連結"];
         const expRows = expenses.map(item => {
             const cat = expenseCategories.find(c => c.id === item.category);
@@ -750,15 +750,15 @@ const TripPlanner = ({
         const packingRows = packingList.map(i => [i.title, i.completed ? "已完成" : "未完成"]);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([packingHeader, ...packingRows]), "行李");
 
-        // Added Image Columns
-        const shopHeader = ["地區", "物品", "地點", "預算", "狀態", "備註", "圖片名稱", "圖片連結"];
-        const shopRows = shoppingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已購買" : "未購買", i.notes, i.image?.name || '', i.image?.link || '']);
+        // Added Website Column to Lists
+        const shopHeader = ["地區", "物品", "地點", "預算", "狀態", "備註", "網站連結", "圖片名稱", "圖片連結"];
+        const shopRows = shoppingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已購買" : "未購買", i.notes, i.website || '', i.image?.name || '', i.image?.link || '']);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([shopHeader, ...shopRows]), "購物");
         
-        const foodRows = foodList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已吃" : "未吃", i.notes, i.image?.name || '', i.image?.link || '']);
+        const foodRows = foodList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已吃" : "未吃", i.notes, i.website || '', i.image?.name || '', i.image?.link || '']);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([shopHeader, ...foodRows]), "美食");
 
-        const sightRows = sightseeingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已去" : "未去", i.notes, i.image?.name || '', i.image?.link || '']);
+        const sightRows = sightseeingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已去" : "未去", i.notes, i.website || '', i.image?.name || '', i.image?.link || '']);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([shopHeader, ...sightRows]), "景點");
 
         const fileName = `TravelApp_${tripSettings.title}.xlsx`;
@@ -1767,7 +1767,15 @@ const TripPlanner = ({
                                                         </div>
                                                     </div>
                                                 )}
-                                                {item.notes && <div className={`text-[10px] text-[#888] ${theme.hover} p-1.5 rounded inline-block flex items-center gap-1`}><Tag size={10} className={theme.accent}/> {item.notes}</div>}
+                                                {item.website && (
+                                                  <div className={`flex items-center gap-1 group/website -ml-1.5 px-1.5 py-0.5 rounded ${theme.hover} transition-colors w-fit`}>
+                                                      <Globe size={12} className={theme.accent} />
+                                                      <a href={item.website} target="_blank" rel="noreferrer" className="text-xs text-[#666666] hover:underline" onClick={e => e.stopPropagation()}>
+                                                        網站連結
+                                                      </a>
+                                                  </div>
+                                                )}
+                                                {item.notes && <div className={`text-[10px] text-[#888] ${theme.hover} p-1.5 rounded inline-block flex items-center gap-1 whitespace-pre-wrap`}><Tag size={10} className={theme.accent}/> {item.notes}</div>}
                                             </div>
                                         </div>
                                         <button onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} className={`text-[#999] hover:${theme.danger} opacity-0 group-hover:opacity-100 p-1`}><Trash2 size={20} /></button>
@@ -1947,7 +1955,15 @@ const TripPlanner = ({
                                 </div>
                               </div>
                           )}
-                          {item.notes && <div className={`text-[10px] text-[#888] ${theme.hover} p-1.5 rounded inline-block flex items-center gap-1`}><Tag size={10} className={theme.accent}/> {item.notes}</div>}
+                          {item.website && (
+                            <div className={`flex items-center gap-1 group/website -ml-1.5 px-1.5 py-0.5 rounded ${theme.hover} transition-colors w-fit`}>
+                                <Globe size={12} className={theme.accent} />
+                                <a href={item.website} target="_blank" rel="noreferrer" className="text-xs text-[#666666] hover:underline" onClick={e => e.stopPropagation()}>
+                                  網站連結
+                                </a>
+                            </div>
+                          )}
+                          {item.notes && <div className={`text-[10px] text-[#888] ${theme.hover} p-1.5 rounded inline-block flex items-center gap-1 whitespace-pre-wrap`}><Tag size={10} className={theme.accent}/> {item.notes}</div>}
                       </div>)}
                     </div>
                     <button onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} className={`text-[#999] hover:${theme.danger} opacity-0 group-hover:opacity-100 p-1`}><Trash2 size={20} /></button>
@@ -2040,6 +2056,12 @@ const TripPlanner = ({
                         <div className="flex gap-2"><div className="relative flex-[2.2]"><select value={formData.costType} onChange={(e) => setFormData({...formData, costType: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg pl-3 pr-8 py-2.5 text-[#3A3A3A] text-base appearance-none focus:outline-none focus:${theme.primaryBorder} h-10 font-bold`}><option value="FOREIGN">{currencySettings.selectedCountry.flag} {currencySettings.selectedCountry.currency}</option><option value="TWD">🇹🇼 TWD</option></select><div className="absolute right-3 top-3.5 pointer-events-none text-[#888] text-[10px]">▼</div></div><input type="text" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" placeholder="0" value={formatInputNumber(formData.cost)} onChange={handleTotalCostChange} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder} font-serif h-10`} /></div>
                       </div>
                     )}
+                    
+                    {/* Region Input for Itinerary */}
+                    {viewMode === 'itinerary' && (
+                         <div className="flex items-center gap-2 text-[#888]"><MapIcon size={16} /><input type="text" placeholder="地區 (選填)" value={formData.region} onChange={e => setFormData({...formData, region: e.target.value})} className={`flex-1 bg-transparent border-b ${theme.border} py-1 text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
+                    )}
+
                     {(viewMode === 'itinerary' || checklistTab !== 'packing') && (
                       <div className="space-y-3">
                         <div className="flex items-center gap-2 text-[#888]"><MapPin size={16} /><input type="text" placeholder="地點/地址" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} className={`flex-1 bg-transparent border-b ${theme.border} py-1 text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>

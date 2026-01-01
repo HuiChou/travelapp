@@ -8,7 +8,7 @@ import {
   Ticket, Bus, Car, Ship, Music, Gamepad2, Gift, Shirt, Briefcase, 
   Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
   Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2, RefreshCw, Printer,
-  Calendar, Tag, ChevronDown, Divide
+  Calendar, Tag, ChevronDown, Divide, Share2
 } from 'lucide-react';
 
 // --- Icon Registry ---
@@ -17,14 +17,15 @@ export const ICON_REGISTRY = {
   ShoppingBag, Coins, Bus, Car, Ship, Ticket, Palmtree, 
   Tent, Music, Gamepad2, Gift, Shirt, Briefcase, Smartphone, 
   Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
-  Flower2, Luggage, Calculator, Wallet, Receipt, Star // Added Star as default
+  Flower2, Luggage, Calculator, Wallet, Receipt, Star
 };
 
 export const getIconComponent = (iconName) => ICON_REGISTRY[iconName] || Camera;
 
 // --- Google API ---
 export const GOOGLE_CLIENT_ID = "456137719976-dp4uin8ae10f332qbhqm447nllr2u4ec.apps.googleusercontent.com";
-// Modify: Added 'https://www.googleapis.com/auth/drive.readonly' to allow seeing all files, not just created ones.
+
+// 優化：包含 drive.readonly 與 drive.file 以確保能讀取他人分享的檔案，並編輯自己有權限的檔案
 export const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly";
 
 // --- Defaults ---
@@ -55,7 +56,6 @@ export const CATEGORY_COLORS = [
 ];
 
 // --- Morandi Color Palette for Avatars (質感莫蘭迪色系 - 增強差異化) ---
-// 重新挑選顏色，確保相鄰色系有足夠對比，避免過於相似
 export const AVATAR_COLORS = [
   'bg-[#A8B6BF]', // 霧霾藍 (Dusty Blue) - 冷色
   'bg-[#D6C4C2]', // 藕粉色 (Pale Pinkish) - 暖色/粉
@@ -181,5 +181,3 @@ export const THEMES = {
     selection: 'selection:bg-[#CCCCCC] selection:text-[#000000]'
   }
 };
-
-

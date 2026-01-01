@@ -114,11 +114,11 @@ export const formatLastModified = (isoString) => {
 // --- Generators ---
 export const getDefaultItinerary = () => ({
   0: [
-    { id: 101, type: 'flight', title: '抵達東京', time: '10:00', duration: 60, location: '成田機場', cost: 0, website: '', notes: '領取 Wifi' },
-    { id: 102, type: 'transport', title: '搭乘 NEX 前往新宿', time: '11:30', duration: 60, location: 'JR成田機場站', cost: 3070, website: 'https://www.jreast.co.jp/', notes: '需要指定席券' },
+    { id: 101, type: 'flight', title: '抵達東京', time: '10:00', duration: 60, region: '成田', location: '成田機場', cost: 0, website: '', notes: '領取 Wifi' },
+    { id: 102, type: 'transport', title: '搭乘 NEX 前往新宿', time: '11:30', duration: 60, region: '東京', location: 'JR成田機場站', cost: 3070, website: 'https://www.jreast.co.jp/', notes: '需要指定席券' },
   ],
   1: [
-    { id: 201, type: 'sightseeing', title: '明治神宮', time: '09:00', duration: 120, location: '原宿', cost: 0, website: '', notes: '感受早晨的空氣' },
+    { id: 201, type: 'sightseeing', title: '明治神宮', time: '09:00', duration: 120, region: '澀谷', location: '原宿', cost: 0, website: '', notes: '感受早晨的空氣' },
   ]
 });
 
@@ -128,18 +128,18 @@ export const getDefaultPackingList = () => [
 ];
 
 export const getDefaultShoppingList = () => [
-  { id: 1, region: '東京車站', title: '東京香蕉', location: '東京車站一番街', cost: 1200, completed: false, notes: '伴手禮用' },
-  { id: 2, region: '新宿', title: '藥妝 (EVE)', location: '松本清', cost: 5000, completed: false, notes: '免稅櫃台在2F' },
+  { id: 1, region: '東京車站', title: '東京香蕉', location: '東京車站一番街', cost: 1200, completed: false, notes: '伴手禮用', website: '' },
+  { id: 2, region: '新宿', title: '藥妝 (EVE)', location: '松本清', cost: 5000, completed: false, notes: '免稅櫃台在2F', website: '' },
 ];
 
 export const getDefaultFoodList = () => [
-  { id: 1, region: '涉谷', title: '挽肉與米', location: '涉谷道玄坂', cost: 2000, notes: '早上9點開始發整理券', completed: false },
-  { id: 2, region: '新宿', title: 'Harbs', location: 'Lumine Est 新宿', cost: 1500, notes: '水果千層必吃', completed: false },
+  { id: 1, region: '涉谷', title: '挽肉與米', location: '涉谷道玄坂', cost: 2000, notes: '早上9點開始發整理券', completed: false, website: 'https://www.hikiniku-to-come.com/' },
+  { id: 2, region: '新宿', title: 'Harbs', location: 'Lumine Est 新宿', cost: 1500, notes: '水果千層必吃', completed: false, website: '' },
 ];
 
 export const getDefaultSightseeingList = () => [
-  { id: 1, region: '淺草', title: '雷門淺草寺', location: '淺草', cost: 0, completed: false, notes: '求籤、買御守' },
-  { id: 2, region: '澀谷', title: 'SHIBUYA SKY', location: 'Scramble Square', cost: 2200, completed: false, notes: '需提前一個月預約夕陽場' },
+  { id: 1, region: '淺草', title: '雷門淺草寺', location: '淺草', cost: 0, completed: false, notes: '求籤、買御守', website: '' },
+  { id: 2, region: '澀谷', title: 'SHIBUYA SKY', location: 'Scramble Square', cost: 2200, completed: false, notes: '需提前一個月預約夕陽場', website: 'https://www.shibuya-scramble-square.com/sky/' },
 ];
 
 export const generateNewProjectData = (title) => {
@@ -273,20 +273,34 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   const itinData = getSheetData("行程表") || [];
   const newItineraries = {};
   if (itinData.length > 1) {
-      // Header Detection for Images
+      // Header Detection
       const headers = itinData[0] || [];
       const imgNameIdx = headers.indexOf("圖片名稱");
       const imgLinkIdx = headers.indexOf("圖片連結");
+      // New Region Column detection
+      const regionIdx = headers.indexOf("地區");
+
+      // Column mapping based on standard export (handle potential variations)
+      const colMap = {
+          day: headers.indexOf("天數") > -1 ? headers.indexOf("天數") : 0,
+          time: headers.indexOf("時間") > -1 ? headers.indexOf("時間") : 1,
+          duration: headers.indexOf("停留(分)") > -1 ? headers.indexOf("停留(分)") : 2,
+          type: headers.indexOf("類別") > -1 ? headers.indexOf("類別") : 3, // Logic might shift if '地區' is inserted before
+          title: headers.indexOf("標題") > -1 ? headers.indexOf("標題") : 4,
+          location: headers.indexOf("地點") > -1 ? headers.indexOf("地點") : 5,
+          cost: headers.indexOf("預算") > -1 ? headers.indexOf("預算") : 6,
+          notes: headers.indexOf("備註") > -1 ? headers.indexOf("備註") : 7
+      };
 
       for (let i=1; i<itinData.length; i++) {
           const row = itinData[i];
           if (!row[0]) continue;
-          const dayStr = row[0] || "Day 1";
+          const dayStr = row[colMap.day] || "Day 1";
           const dayIndex = parseInt(dayStr.replace("Day ", "")) - 1;
           if (dayIndex < 0 || isNaN(dayIndex)) continue;
           
           if (!newItineraries[dayIndex]) newItineraries[dayIndex] = [];
-          const typeLabel = row[3];
+          const typeLabel = row[colMap.type];
           const typeId = itinLabelToId[typeLabel] || currentItinCats[0].id;
 
           // Reconstruct Image Object
@@ -301,12 +315,13 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
           newItineraries[dayIndex].push({
               id: Date.now() + Math.random() + i,
               type: typeId,
-              title: row[4] || "未命名",
-              time: row[1] || "09:00",
-              duration: parseInt(row[2]) || 60,
-              location: row[5] || "",
-              cost: parseFloat(row[6]) || 0,
-              notes: row[7] || "",
+              title: row[colMap.title] || "未命名",
+              time: row[colMap.time] || "09:00",
+              duration: parseInt(row[colMap.duration]) || 60,
+              region: regionIdx !== -1 ? (row[regionIdx] || "") : "", // Load Region
+              location: row[colMap.location] || "",
+              cost: parseFloat(row[colMap.cost]) || 0,
+              notes: row[colMap.notes] || "",
               image: imageObj
           });
       }
@@ -475,7 +490,7 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
        }
   }
 
-  // --- Parse Checklists with Images ---
+  // --- Parse Checklists with Images & Website ---
   const parseSimpleList = (sheetName, mapFn) => {
       const data = getSheetData(sheetName) || [];
       if (data.length <= 1) return [];
@@ -483,6 +498,7 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
       const headers = data[0] || [];
       const imgNameIdx = headers.indexOf("圖片名稱");
       const imgLinkIdx = headers.indexOf("圖片連結");
+      const websiteIdx = headers.indexOf("網站連結");
 
       return data.slice(1).map((row, i) => {
          const baseItem = mapFn(row, i);
@@ -494,6 +510,10 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
                  imgNameIdx !== -1 ? row[imgNameIdx] : '',
                  row[imgLinkIdx]
              );
+         }
+         // Check for website
+         if (websiteIdx !== -1 && row[websiteIdx]) {
+             baseItem.website = row[websiteIdx];
          }
          return baseItem;
       }).filter(item => item !== null);
