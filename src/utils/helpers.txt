@@ -189,6 +189,24 @@ export const generateNewProjectData = (title) => {
   };
 };
 
+// Helper to extract Drive File ID from URL
+const extractDriveId = (url) => {
+  if (!url) return null;
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : null;
+};
+
+// Helper to reconstruct image object
+const reconstructImage = (name, link) => {
+    if (!link) return null;
+    return {
+        id: extractDriveId(link), // Attempt to extract ID for deletion purposes
+        link: link,
+        name: name || 'Untitled Image',
+        thumbnail: link // Use link as thumbnail fallback
+    };
+};
+
 // --- Cloud Data Parser (Optimized for Header Detection) ---
 export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   const getSheetData = (rangeName) => {
@@ -207,7 +225,12 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   const days = calculateDaysDiff(startDate, endDate);
   
   const companionsStr = ovMap["旅行人員"] || "Me";
-  const newCompanions = companionsStr.split(",").map(s => s.trim()).filter(s => s);
+  
+  // FIX 1: 過濾保留字 (Filter out reserved keywords)
+  const reservedKeywords = ['均攤', '各付', '全員', 'ALL', 'EACH'];
+  const newCompanions = companionsStr.split(",")
+    .map(s => s.trim())
+    .filter(s => s && !reservedKeywords.includes(s));
   
   const countryName = ovMap["旅行國家"];
   const currencyCode = ovMap["貨幣代碼"];
@@ -250,6 +273,11 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   const itinData = getSheetData("行程表") || [];
   const newItineraries = {};
   if (itinData.length > 1) {
+      // Header Detection for Images
+      const headers = itinData[0] || [];
+      const imgNameIdx = headers.indexOf("圖片名稱");
+      const imgLinkIdx = headers.indexOf("圖片連結");
+
       for (let i=1; i<itinData.length; i++) {
           const row = itinData[i];
           if (!row[0]) continue;
@@ -261,6 +289,15 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
           const typeLabel = row[3];
           const typeId = itinLabelToId[typeLabel] || currentItinCats[0].id;
 
+          // Reconstruct Image Object
+          let imageObj = null;
+          if (imgLinkIdx !== -1 && row[imgLinkIdx]) {
+             imageObj = reconstructImage(
+                 imgNameIdx !== -1 ? row[imgNameIdx] : '',
+                 row[imgLinkIdx]
+             );
+          }
+
           newItineraries[dayIndex].push({
               id: Date.now() + Math.random() + i,
               type: typeId,
@@ -269,7 +306,8 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
               duration: parseInt(row[2]) || 60,
               location: row[5] || "",
               cost: parseFloat(row[6]) || 0,
-              notes: row[7] || ""
+              notes: row[7] || "",
+              image: imageObj
           });
       }
   }
@@ -298,7 +336,11 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
            currency: headers.indexOf("幣別"),
            
            split: headers.indexOf("分帳細節"),
-           notes: headers.indexOf("備註")
+           notes: headers.indexOf("備註"),
+
+           // Images
+           imgName: headers.indexOf("圖片名稱"),
+           imgLink: headers.indexOf("圖片連結")
        };
 
        for (let i=1; i<expenseData.length; i++) {
@@ -336,32 +378,82 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
 
           if (splitStr.includes("分攤:")) {
               const sharesPart = splitStr.replace("分攤:", "").trim();
-              shares = sharesPart.split(",").map(s => s.trim());
+              shares = sharesPart.split(",").map(s => s.trim()).filter(s => s); 
+              
+              // NEW: 簡易模式 - 自動擴展成員 & 排序
+              if (shares.includes('全員') || shares.includes('均攤')) {
+                   if (!shares.includes('全員')) shares.push('全員');
+                   newCompanions.forEach(c => { if (!shares.includes(c)) shares.push(c); });
+              }
+              if (shares.includes('各付')) {
+                   newCompanions.forEach(c => { if (!shares.includes(c)) shares.push(c); });
+              }
+              
+              // 排序: 讓 全員/各付 排在最前面
+              shares.sort((a, b) => {
+                  const isTagA = a === '全員' || a === '各付';
+                  const isTagB = b === '全員' || b === '各付';
+                  if (isTagA && !isTagB) return -1;
+                  if (!isTagA && isTagB) return 1;
+                  return 0;
+              });
+
               const shareAmount = Math.round(rawCost / shares.length);
               details = shares.map((s, idx) => ({ id: Date.now() + idx + Math.random(), payer: payer, target: s, amount: shareAmount }));
           } else {
                shares = [payer]; 
-               const parts = splitStr.split(",").map(s => s.trim());
-               if (parts.length > 0 && parts[0].includes(":")) {
+               const parts = splitStr.split(",").map(s => s.trim()).filter(s => s); 
+               
+               if (parts.length > 0 && (parts[0].includes(":") || parts[0].includes("："))) {
                    shares = [];
                    details = parts.map((p, idx) => {
-                       const [name, amt] = p.split(":").map(x => x.trim());
+                       const safeP = p.replace('：', ':');
+                       const [name, amt] = safeP.split(":").map(x => x ? x.trim() : "");
                        
-                       // UPDATED: Handle "各付" or "EACH" -> 'EACH'
                        let targetName = name;
-                       if (name === '全員') targetName = 'ALL';
+                       if (name === '全員' || name === '均攤' || name === 'ALL') targetName = 'ALL';
                        else if (name === '各付' || name === 'EACH') targetName = 'EACH';
                        
-                       // Only add to shares list if it's a specific person (not special keywords)
-                       // Or we can just store the targetName. 
-                       // For display logic 'shares' array usually contains names.
-                       if (targetName !== 'ALL' && targetName !== 'EACH' && !shares.includes(targetName)) {
-                           shares.push(targetName);
+                       if (!targetName) targetName = 'Unknown'; 
+
+                       // 修正：卡片顯示用 (shares) 需包含「標籤」與「展開的成員」
+                       let displayLabel = null;
+                       if (targetName === 'ALL') displayLabel = '全員';
+                       else if (targetName === 'EACH') displayLabel = '各付';
+
+                       if (displayLabel) {
+                           // 1. 確保標籤(全員/各付)存在
+                           if (!shares.includes(displayLabel)) shares.push(displayLabel);
+                           
+                           // 2. 展開所有成員到 shares 清單中 (這就是自動偵測更新的關鍵)
+                           newCompanions.forEach(comp => {
+                               if (!shares.includes(comp)) shares.push(comp);
+                           });
+                       } else {
+                           if (!shares.includes(targetName)) shares.push(targetName);
                        }
                        
                        return { id: Date.now() + idx + Math.random(), payer: payer, target: targetName, amount: parseFloat(amt) || 0 }
                    });
+
+                   // NEW: 排序 shares，確保標籤在最前面
+                   shares.sort((a, b) => {
+                       const isTagA = a === '全員' || a === '各付';
+                       const isTagB = b === '全員' || b === '各付';
+                       if (isTagA && !isTagB) return -1;
+                       if (!isTagA && isTagB) return 1;
+                       return 0;
+                   });
                }
+          }
+
+          // Image Reconstruction
+          let imageObj = null;
+          if (idx.imgLink !== -1 && row[idx.imgLink]) {
+              imageObj = reconstructImage(
+                  idx.imgName !== -1 ? row[idx.imgName] : '',
+                  row[idx.imgLink]
+              );
           }
 
           newExpenses.push({
@@ -377,16 +469,34 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
               costType: costType,     // Store logic type (TWD or FOREIGN)
               shares: shares,
               details: details,
-              notes: idx.notes !== -1 ? (row[idx.notes] || "") : ""
+              notes: idx.notes !== -1 ? (row[idx.notes] || "") : "",
+              image: imageObj
           });
        }
   }
 
-  // --- Parse Checklists ---
+  // --- Parse Checklists with Images ---
   const parseSimpleList = (sheetName, mapFn) => {
       const data = getSheetData(sheetName) || [];
       if (data.length <= 1) return [];
-      return data.slice(1).map(mapFn).filter(item => item !== null);
+      
+      const headers = data[0] || [];
+      const imgNameIdx = headers.indexOf("圖片名稱");
+      const imgLinkIdx = headers.indexOf("圖片連結");
+
+      return data.slice(1).map((row, i) => {
+         const baseItem = mapFn(row, i);
+         if (!baseItem) return null;
+
+         // Check for images in common simple lists
+         if (imgLinkIdx !== -1 && row[imgLinkIdx]) {
+             baseItem.image = reconstructImage(
+                 imgNameIdx !== -1 ? row[imgNameIdx] : '',
+                 row[imgLinkIdx]
+             );
+         }
+         return baseItem;
+      }).filter(item => item !== null);
   };
 
   const newPacking = parseSimpleList("行李", (row, i) => 
