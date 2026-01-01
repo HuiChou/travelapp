@@ -10,7 +10,7 @@ import {
   Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
   Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2, RefreshCw, Printer,
   Calendar, Tag, ChevronDown, Divide, Filter, FileSpreadsheet, FilterX,
-  Image as ImageIcon, ExternalLink, ArrowDownCircle, UserPlus, Share2
+  Image as ImageIcon, ExternalLink, ArrowDownCircle, Share2, UserPlus
 } from 'lucide-react';
 
 import { 
@@ -25,7 +25,7 @@ import {
     parseProjectDataFromGAPI 
 } from '../utils/helpers';
 
-import { BottomNav, PayerAvatar, AvatarSelect, CategorySelect, CompositeFilter } from '../components/UIComponents';
+import { BottomNav, PayerAvatar, AvatarSelect, CategorySelect, CompositeFilter, ShareModal } from '../components/UIComponents';
 
 const TripPlanner = ({ 
   projectData, 
@@ -75,10 +75,9 @@ const TripPlanner = ({
   const [driveFolderId, setDriveFolderId] = useState(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
-  // Share/Collaborate State
+  // Share/Collaboration State
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const [shareEmail, setShareEmail] = useState('');
-  const [isSharing, setIsSharing] = useState(false);
+  const [isInviting, setIsInviting] = useState(false);
 
   useEffect(() => {
     if (window.XLSX) {
@@ -105,7 +104,7 @@ const TripPlanner = ({
           const q = "name contains 'TravelApp_' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false";
           const response = await window.gapi.client.drive.files.list({
               q: q,
-              fields: 'files(id, name, modifiedTime)',
+              fields: 'files(id, name, modifiedTime, owners)',
               orderBy: 'modifiedTime desc',
               pageSize: 20
           });
@@ -124,13 +123,13 @@ const TripPlanner = ({
       try {
         const ranges = [
             "專案概覽!A:B", 
-            "行程表!A:J", 
-            "費用!A:P", 
+            "行程表!A:J", // Expanded for image cols
+            "費用!A:P", // Expanded for image cols
             "管理類別!A:E", 
             "行李!A:B", 
-            "購物!A:H", 
-            "美食!A:H", 
-            "景點!A:H"  
+            "購物!A:H", // Expanded for image cols
+            "美食!A:H", // Expanded for image cols
+            "景點!A:H"  // Expanded for image cols
         ];
         
         const response = await window.gapi.client.sheets.spreadsheets.values.batchGet({
@@ -197,6 +196,7 @@ const TripPlanner = ({
               ["旅行人員", companions.join(", ")]
           ];
 
+          // Added Image Columns
           const itinHeader = ["天數", "時間", "停留(分)", "類別", "標題", "地點", "預算", "備註", "圖片名稱", "圖片連結"];
           const itinRows = [];
           Object.keys(itineraries).sort((a,b)=>a-b).forEach(dayIndex => {
@@ -220,6 +220,7 @@ const TripPlanner = ({
           });
           const itinValues = [itinHeader, ...itinRows];
 
+          // Added Image Columns
           const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "原始金額", "原始幣別", "旅遊幣別", "旅遊幣金額", "台幣金額", "分帳細節", "備註", "圖片名稱", "圖片連結"];
           const expRows = expenses.map(item => {
               const cat = expenseCategories.find(c => c.id === item.category);
@@ -276,6 +277,7 @@ const TripPlanner = ({
           const packingRows = packingList.map(i => [i.title, i.completed ? "已完成" : "未完成"]);
           const packingValues = [packingHeader, ...packingRows];
 
+          // Added Image Columns to Lists
           const shopHeader = ["地區", "物品", "地點", "預算", "狀態", "備註", "圖片名稱", "圖片連結"];
           const shopRows = shoppingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已購買" : "未購買", i.notes, i.image?.name || '', i.image?.link || '']);
           const shopValues = [shopHeader, ...shopRows];
@@ -296,6 +298,7 @@ const TripPlanner = ({
               setGoogleDriveFileId(targetFileId); 
           }
 
+          // 1. 確保所有 Sheet 都存在
           const ssMeta = await window.gapi.client.sheets.spreadsheets.get({ spreadsheetId: targetFileId });
           const existingSheetTitles = ssMeta.result.sheets.map(s => s.properties.title);
           const requiredSheets = ["專案概覽", "行程表", "費用", "管理類別", "行李", "購物", "美食", "景點"];
@@ -314,12 +317,14 @@ const TripPlanner = ({
               });
           }
 
+          // 2.【優化關鍵】先清除這些工作表的內容，確保「刪除」的資料不會殘留 (Ghost Rows)
           const rangesToClear = requiredSheets.map(sheet => `${sheet}!A:Z`);
           await window.gapi.client.sheets.spreadsheets.values.batchClear({
               spreadsheetId: targetFileId,
               resource: { ranges: rangesToClear }
           });
 
+          // 3. 寫入最新的完整資料
           const dataBody = [
               { range: "專案概覽!A1", values: overviewValues },
               { range: "行程表!A1", values: itinValues },
@@ -341,51 +346,15 @@ const TripPlanner = ({
           
           if (!isSilent) alert(`同步成功！\n資料已寫入雲端檔案。\n(檔名: TravelApp_${tripSettings.title})`);
 
+          return targetFileId;
+
       } catch (error) {
           console.error("Error saving to Google Sheets:", error);
           if (!isSilent) alert("同步失敗，請檢查網路或權限。\n(請確保已重新登入並授予完整權限)");
+          return null;
       } finally {
           setIsSyncing(false);
           setIsAutoSaving(false);
-      }
-  };
-
-  // --- NEW: Handle Sharing ---
-  const handleShareProject = async (e) => {
-      e.preventDefault();
-      if (!googleUser || !gapiInited) {
-          alert("請先登入 Google 帳號才能使用分享功能");
-          return;
-      }
-      if (!googleDriveFileId) {
-          alert("請先點擊「立即手動同步」將此專案存到雲端，產生檔案後才能分享。");
-          return;
-      }
-      if (!shareEmail || !shareEmail.includes('@')) {
-          alert("請輸入有效的 Email 地址");
-          return;
-      }
-
-      setIsSharing(true);
-      try {
-          await window.gapi.client.drive.permissions.create({
-              fileId: googleDriveFileId,
-              resource: {
-                  role: 'writer',
-                  type: 'user',
-                  emailAddress: shareEmail
-              },
-              emailMessage: `我正在使用 TravelApp 規劃行程「${tripSettings.title}」，邀請你一起編輯！`
-          });
-          
-          alert(`已成功分享給 ${shareEmail}！\n\n請告知對方：\n1. 登入此 App\n2. 點擊首頁的「雲端掃描匯入」\n3. 即可看到此行程並一起協作。`);
-          setShareEmail('');
-          setIsShareModalOpen(false);
-      } catch (error) {
-          console.error("Share Error:", error);
-          alert("分享失敗。請確認 Email 正確，或您是否有此檔案的編輯權限。");
-      } finally {
-          setIsSharing(false);
       }
   };
 
@@ -394,6 +363,44 @@ const TripPlanner = ({
       alert("PDF 匯出功能 (模擬)");
     } catch (err) {
       console.error("PDF Export Error:", err);
+    }
+  };
+
+  // Share / Invite Logic
+  const handleInviteUser = async (email) => {
+    if (!googleUser || !gapiInited) {
+        alert("請先登入 Google 帳號。");
+        return;
+    }
+    
+    setIsInviting(true);
+    try {
+        // 1. Ensure file exists on cloud
+        let targetId = googleDriveFileId;
+        if (!targetId) {
+            targetId = await handleSaveToGoogleSheet(true);
+            if (!targetId) throw new Error("無法建立雲端檔案");
+        }
+
+        // 2. Create Permission
+        await window.gapi.client.drive.permissions.create({
+            fileId: targetId,
+            resource: {
+                role: 'writer',
+                type: 'user',
+                emailAddress: email
+            },
+            emailMessage: `我正在使用 Travel App 規劃「${tripSettings.title}」，邀請您一起協作編輯！`
+        });
+
+        alert(`邀請發送成功！\n已將編輯權限分享給 ${email}`);
+        setIsShareModalOpen(false);
+
+    } catch (error) {
+        console.error("Share Error:", error);
+        alert("邀請失敗，請確認 Email 是否正確，或檢查網路連線。");
+    } finally {
+        setIsInviting(false);
     }
   };
 
@@ -627,6 +634,7 @@ const TripPlanner = ({
         const wsOverview = window.XLSX.utils.aoa_to_sheet(overviewData);
         window.XLSX.utils.book_append_sheet(wb, wsOverview, "專案概覽");
 
+        // Added Image Columns
         const itinHeader = ["天數", "時間", "停留(分)", "類別", "標題", "地點", "預算", "備註", "圖片名稱", "圖片連結"];
         const itinRows = [];
         Object.keys(itineraries).sort((a,b)=>a-b).forEach(dayIndex => {
@@ -650,6 +658,7 @@ const TripPlanner = ({
         const wsItin = window.XLSX.utils.aoa_to_sheet([itinHeader, ...itinRows]);
         window.XLSX.utils.book_append_sheet(wb, wsItin, "行程表");
 
+        // Added Image Columns
         const expHeader = ["日期", "地區", "類別", "項目", "地點", "付款人", "原始金額", "原始幣別", "旅遊幣別", "旅遊幣金額", "台幣金額", "分帳細節", "備註", "圖片名稱", "圖片連結"];
         const expRows = expenses.map(item => {
             const cat = expenseCategories.find(c => c.id === item.category);
@@ -708,6 +717,7 @@ const TripPlanner = ({
         const packingRows = packingList.map(i => [i.title, i.completed ? "已完成" : "未完成"]);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([packingHeader, ...packingRows]), "行李");
 
+        // Added Image Columns
         const shopHeader = ["地區", "物品", "地點", "預算", "狀態", "備註", "圖片名稱", "圖片連結"];
         const shopRows = shoppingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已購買" : "未購買", i.notes, i.image?.name || '', i.image?.link || '']);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([shopHeader, ...shopRows]), "購物");
@@ -866,6 +876,7 @@ const TripPlanner = ({
     }
 
     setEditingItem(item);
+    // 編輯時不再自動換算，保持原始儲存的數值與幣別
     let displayCost = item.cost;
     let currentCostType = item.costType || 'FOREIGN';
     
@@ -906,6 +917,7 @@ const TripPlanner = ({
     e.preventDefault();
     let newItem = { ...formData, id: editingItem ? editingItem.id : Date.now() };
     
+    // 核心修正：不再進行幣別換算儲存
     if (formData.cost) {
       newItem.cost = parseFloat(formData.cost);
     } else {
@@ -916,20 +928,32 @@ const TripPlanner = ({
     if (viewMode === 'expenses') {
       newItem.currency = currencySettings.selectedCountry.currency;
 
+      // ---------------------------------------------------------
+      // 優化：若沒有設定分攤細節 (details 為空)，則預設為「每人各付各的」
+      // ---------------------------------------------------------
       if (!newItem.details || newItem.details.length === 0) {
-         const unitCost = newItem.cost; 
+         const unitCost = newItem.cost; // 輸入的金額視為「每人」的金額
          
+         // 自動產生所有旅伴的各付各紀錄
          newItem.details = companions.map((person, index) => ({
-             id: Date.now() + index + Math.random(), 
+             id: Date.now() + index + Math.random(), // 確保 ID 唯一
              payer: person,
              target: person,
              amount: unitCost
          }));
 
+         // 更新卡片總金額為 (單人金額 * 人數)
          newItem.cost = unitCost * companions.length;
+         
+         // 設定顯示用的主要付款人 (通常列表顯示第一位)
          newItem.payer = companions[0];
+         
+         // 設定分攤對象為所有人
          newItem.shares = [...companions];
       } 
+      // ---------------------------------------------------------
+      // 原有邏輯：若已有設定分攤細節
+      // ---------------------------------------------------------
       else if (newItem.details && newItem.details.length > 0) {
          newItem.payer = newItem.details[0].payer;
          const targets = new Set();
@@ -1009,6 +1033,7 @@ const TripPlanner = ({
   
   const removeSplitDetail = (detailId) => { 
       const updatedDetails = formData.details.filter(d => d.id !== detailId);
+      // Recalculate Total Cost based on remaining details
       let newCost = 0;
       updatedDetails.forEach(d => {
          if (d.target === 'EACH') newCost += (parseFloat(d.amount)||0) * companions.length;
@@ -1025,6 +1050,7 @@ const TripPlanner = ({
           return { ...d, ...updates };
       });
       
+      // Auto-calculate Total Cost when detail amount changes
       let newCost = 0;
       updatedDetails.forEach(d => {
          if (d.target === 'EACH') {
@@ -1063,8 +1089,9 @@ const TripPlanner = ({
       setIsSettingsOpen(true);
   };
 
-  // --- Statistics Logic ---
+  // --- Statistics Logic (EXPERT OPTIMIZATION) ---
   const statisticsData = useMemo(() => {
+    // 1. 基本過濾 (日期 & 類別) - 用於計算全域收支平衡 (personStats)
     const baseExpenses = expenses.filter(exp => {
         let matchesDay = true;
         if (statsDayFilter !== 'all') {
@@ -1079,17 +1106,23 @@ const TripPlanner = ({
         return matchesDay && matchesCategory;
     });
 
+    // 2. 計算全域成員收支 (基於目前的日期/類別篩選，但不考慮人員篩選)
+    // 這樣即使切換人員，上方的泡泡仍顯示該範圍內的總覽
     const personStats = {};
     companions.forEach(c => { personStats[c] = { paid: 0, share: 0, balance: 0 }; });
     const getSafeStat = (name) => { if (!personStats[name]) personStats[name] = { paid: 0, share: 0, balance: 0 }; return personStats[name]; };
 
+    // 匯率轉換
     const rate = currencySettings.exchangeRate || 1;
     const toForeign = (amount, type) => (type === 'TWD' ? (amount / rate) : amount);
 
+    // 擴展後的個人消費列表 (用於個人模式)
     let expandedConsumptionList = [];
+    // 擴展後的個人支付列表 (用於真實支付模式)
     let expandedPaymentList = [];
 
     baseExpenses.forEach(exp => {
+      // 2a. 計算收支平衡 (personStats)
       if (exp.details && exp.details.length > 0) {
           exp.details.forEach((d, idx) => {
               const dAmountRaw = parseFloat(d.amount) || 0;
@@ -1115,6 +1148,8 @@ const TripPlanner = ({
               currentPayers.forEach(p => getSafeStat(p).paid += paidPerPerson);
               currentTargets.forEach(t => getSafeStat(t).share += sharePerPerson);
 
+              // 2b. 建構個人支付列表 (expandedPaymentList) - 真實支付模式用
+              // 當付款人是 EACH 時，這裡會將其拆解成 N 筆支付記錄
               if (d.payer === 'EACH') {
                   companions.forEach(c => {
                       expandedPaymentList.push({
@@ -1133,7 +1168,7 @@ const TripPlanner = ({
                   expandedPaymentList.push({
                       ...exp,
                       id: `${exp.id}_pay_${idx}`,
-                      cost: totalLineCost, 
+                      cost: totalLineCost, // 該付款人支付了整行的總額
                       costType: 'FOREIGN',
                       currency: currencySettings.selectedCountry.currency,
                       payer: d.payer,
@@ -1143,6 +1178,7 @@ const TripPlanner = ({
                   });
               }
 
+              // 2c. 建構個人消費列表 (expandedConsumptionList) - 個人消費模式用
               if (d.target === 'ALL' || d.target === 'EACH') {
                   companions.forEach(c => {
                       expandedConsumptionList.push({
@@ -1151,7 +1187,7 @@ const TripPlanner = ({
                            cost: sharePerPerson, 
                            costType: 'FOREIGN', 
                            currency: currencySettings.selectedCountry.currency,
-                           payer: c, 
+                           payer: c, // 在個人模式下，'payer' 代表「消費者」
                            realPayer: (d.payer === 'EACH' ? c : d.payer), 
                            isVirtual: true, 
                            noteSuffix: `(${d.target === 'EACH' ? '各付' : '均攤'})` 
@@ -1164,7 +1200,7 @@ const TripPlanner = ({
                       cost: sharePerPerson, 
                       costType: 'FOREIGN',
                       currency: currencySettings.selectedCountry.currency,
-                      payer: d.target, 
+                      payer: d.target, // 在個人模式下，'payer' 代表「消費者」
                       realPayer: (d.payer === 'EACH' ? d.target : d.payer), 
                       isVirtual: true, 
                       noteSuffix: `` 
@@ -1172,6 +1208,7 @@ const TripPlanner = ({
               }
           });
       } else {
+          // 無詳細分帳，簡易模式
           const amountForeign = toForeign(exp.cost || 0, exp.costType);
           const payer = exp.payer || 'Unknown';
           getSafeStat(payer).paid += amountForeign;
@@ -1180,10 +1217,11 @@ const TripPlanner = ({
           const perPersonCost = amountForeign / consumers.length;
 
           consumers.forEach(c => {
-               if (c === '全員') { }
+               if (c === '全員') { /* 已在上方處理 */ }
                else { getSafeStat(c).share += perPersonCost; }
           });
           
+          // 簡易模式 - 支付列表
           if (exp.payer === 'EACH') {
               const perPersonPay = amountForeign / companions.length;
               companions.forEach((c, idx) => {
@@ -1213,6 +1251,7 @@ const TripPlanner = ({
               });
           }
 
+          // 簡易模式 - 消費列表
           if (exp.shares && exp.shares.length > 0) {
               exp.shares.forEach((shareName, sIdx) => {
                    expandedConsumptionList.push({
@@ -1239,33 +1278,43 @@ const TripPlanner = ({
       }
     });
     
+    // 計算結算建議
     Object.keys(personStats).forEach(p => personStats[p].balance = personStats[p].paid - personStats[p].share);
     const transactions = solveDebts(personStats);
 
+    // 3. 準備顯示用的列表 (根據 statsMode 選擇來源)
     let displaySource = statsMode === 'real' ? expandedPaymentList : expandedConsumptionList;
 
+    // 4. 套用「人員篩選」(statsPersonFilter)
+    // 這是關鍵：在此階段過濾，讓後續的圖表與每日明細只反映該成員
     let finalDisplayList = displaySource;
     if (statsPersonFilter !== 'all') {
         finalDisplayList = displaySource.filter(item => {
+            // 在 Real 模式：item.payer 是付款人 (若為 EACH 已被拆解成個別付款人)
+            // 在 Personal 模式：item.payer 是消費者 (已在上方 logic 設定)
             return item.payer === statsPersonFilter;
         });
     }
 
+    // 5. 計算圖表與每日明細 (使用過濾後的 finalDisplayList)
     const categoryStats = {};
     const dailyTotals = {};
 
     finalDisplayList.forEach(item => {
+        // 計算金額 (已經統一轉為外幣了，如果是 real 模式要注意原始幣別)
         let amount = 0;
         if (item.isVirtual) {
-            amount = item.cost;
+            amount = item.cost; // 虛擬項目已經轉為 FOREIGN
         } else {
             amount = toForeign(item.cost || 0, item.costType);
         }
         
+        // 類別統計
         const cat = item.category || 'other';
         if (!categoryStats[cat]) categoryStats[cat] = 0;
         categoryStats[cat] += amount;
 
+        // 每日明細
         const dateKey = item.date;
         if (!dailyTotals[dateKey]) dailyTotals[dateKey] = 0;
         dailyTotals[dateKey] += amount;
@@ -1275,18 +1324,20 @@ const TripPlanner = ({
         .sort((a, b) => new Date(a[0]) - new Date(b[0]))
         .map(([date, total]) => ({ date, total }));
 
+    // 排序最終顯示列表
     finalDisplayList = sortExpensesByRegionAndCategory(finalDisplayList);
 
     return { 
         personStats, 
         transactions, 
-        finalDisplayList, 
+        finalDisplayList, // 直接提供給 renderDetailedList 使用
         categoryStats, 
         sortedDailyTotals 
     };
   }, [expenses, companions, expenseCategories, statsDayFilter, statsCategoryFilter, statsPersonFilter, statsMode, tripSettings.startDate, currencySettings.exchangeRate]); 
 
   const renderDetailedList = () => {
+    // 優化：直接使用 useMemo 計算好的 finalDisplayList，不再重複篩選
     const sortedExpenses = statisticsData.finalDisplayList;
 
     if (sortedExpenses.length === 0) return <div className="text-center text-[#888] py-8 text-sm">無符合條件的資料</div>;
@@ -1297,6 +1348,7 @@ const TripPlanner = ({
        const categoryDef = expenseCategories.find(c => c.id === currentCategory) || { label: '未分類', icon: 'Coins' };
        const rate = currencySettings.exchangeRate || 1;
 
+       // 修正顯示邏輯：根據 costType 決定主顯示與副顯示
        let displayMain, displaySub;
        if (exp.costType === 'TWD' && !exp.isVirtual) {
            const twdVal = exp.cost || 0;
@@ -1304,6 +1356,7 @@ const TripPlanner = ({
            displayMain = `TWD ${formatMoney(twdVal)}`;
            displaySub = `(${currencySettings.selectedCountry.currency} ${formatMoney(foreignVal)})`;
        } else {
+           // 虛擬項目或外幣項目
            const foreignVal = exp.cost || 0;
            const twdVal = foreignVal * rate;
            displayMain = `${exp.currency || currencySettings.selectedCountry.currency} ${formatMoney(foreignVal)}`;
@@ -1314,6 +1367,7 @@ const TripPlanner = ({
        
        if (index === 0 || currentCategory !== prevExp?.category) {
          const CatIcon = getIconComponent(categoryDef.icon);
+         // 使用新計算的 categoryStats (已包含人員篩選結果)
          const categoryTotalForeign = statisticsData.categoryStats[currentCategory] || 0;
          const categoryTotalTWD = categoryTotalForeign * rate;
 
@@ -1341,6 +1395,7 @@ const TripPlanner = ({
                  </div>
                  <div className="text-[10px] text-[#888] mt-1 flex flex-wrap gap-1 items-center">
                    {statsMode === 'personal' ? (
+                     // 核心優化：付款人顯示 exp.payer (自己/消費者)，代墊者顯示 exp.realPayer (實際出錢的人)
                      <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.realPayer} companions={companions} theme={theme}/><span>{exp.realPayer}</span></span></>
                    ) : (
                      <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>分攤:</span>{exp.details && exp.details.some(d => d.target === 'ALL' || d.target === 'EACH') ? <span className={`${theme.hover} px-1 rounded ${theme.primary}`}>{exp.details.some(d=>d.target==='EACH')?'各付':'全員'}</span> : <span>{exp.shares ? exp.shares.length : 0}人</span>}</span></>
@@ -1356,6 +1411,7 @@ const TripPlanner = ({
   };
 
   const getCategoryChartData = () => {
+    // 簡化：直接使用 statisticsData.categoryStats
     const data = statisticsData.categoryStats;
     const chartData = Object.entries(data)
         .map(([catId, amount]) => {
@@ -1370,6 +1426,7 @@ const TripPlanner = ({
 
   const { chartData: categoryChartData, maxAmount: maxCategoryAmount } = getCategoryChartData();
 
+  // Helper for Checklist Grouping
   const groupListByRegion = (list) => {
     const grouped = {};
     list.forEach(item => {
@@ -1398,10 +1455,11 @@ const TripPlanner = ({
             </div>
             <div className="flex gap-2 shrink-0 relative items-center">
               {googleUser && (<div className="hidden sm:flex items-center gap-1 mr-1">{isAutoSaving || isSyncing ? (<div className="flex items-center gap-1 text-[10px] text-[#A98467] font-bold"><Loader2 size={12} className="animate-spin"/> 儲存中</div>) : (<div className="flex items-center gap-1 text-[10px] text-[#5F6F52] font-bold opacity-70"><Cloud size={12}/> 已同步</div>)}</div>)}
-              {/* NEW: Share Button */}
-              <button type="button" onClick={() => setIsShareModalOpen(true)} className={`p-2 rounded-full flex items-center gap-1.5 border border-transparent hover:${theme.border} ${theme.hover} text-[#5F6F52]`} title="分享協作"><UserPlus size={20} /></button>
-              
               <button type="button" onClick={handleOpenCurrencyModal} className={`p-2 rounded-full flex items-center gap-1.5 border border-transparent hover:${theme.border} ${theme.hover} ${theme.accent}`}><Coins size={18} /><span className="text-[10px] font-bold hidden sm:inline-block">{currencySettings?.selectedCountry?.currency || 'JPY'}</span></button>
+              
+              {/* NEW SHARE BUTTON */}
+              <button type="button" onClick={() => setIsShareModalOpen(true)} className={`p-2 rounded-full transition-colors text-[#5F6F52] hover:bg-[#F2F0EB]`} title="邀請協作"><Share2 size={20} /></button>
+              
               <button type="button" onClick={handleOpenCompanionModal} className={`p-2 rounded-full transition-colors ${theme.subText} ${theme.hover}`}><Users size={20} /></button>
               <button type="button" onClick={handleOpenSettingsModal} className={`p-2 rounded-full transition-colors ${theme.subText} ${theme.hover}`}><Settings size={20} /></button>
               <div className="relative">
@@ -1413,7 +1471,6 @@ const TripPlanner = ({
                       <div className={`px-4 py-2 text-xs font-bold text-[#888] uppercase tracking-wider border-b ${theme.border} mb-1 flex justify-between items-center`}><span>雲端同步 (Google)</span>{googleUser && <span className="text-[10px] text-green-600 flex items-center gap-1"><CheckCircle2 size={10}/> 已登入</span>}</div>
                       <button onClick={() => { handleSaveToGoogleSheet(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 text-[#3A3A3A]`} disabled={isSyncing}>{isSyncing ? <Loader2 size={16} className="animate-spin text-[#3A3A3A]"/> : <RefreshCw size={16} className={theme.primary}/>} {isSyncing ? "同步中..." : "立即手動同步"}</button>
                       <button onClick={() => { setIsFileMenuOpen(false); setIsCloudLoadModalOpen(true); fetchCloudFiles(); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 text-[#3A3A3A]`}><CloudDownload size={16} className={theme.primary}/> 讀取雲端檔案</button>
-                      <button onClick={() => { setIsFileMenuOpen(false); setIsShareModalOpen(true); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 text-[#3A3A3A]`}><UserPlus size={16} className={theme.primary}/> 分享與協作</button>
                       <div className={`my-1 border-b ${theme.border}`}></div>
                       <div className="px-4 py-2 text-xs font-bold text-[#888] uppercase tracking-wider">本機檔案</div>
                       <button onClick={() => { fileInputRef.current.click(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 ${!isXlsxLoaded ? 'opacity-50 cursor-not-allowed' : 'text-[#3A3A3A]'}`} disabled={!isXlsxLoaded}>{isXlsxLoaded ? <Upload size={16} /> : <Loader2 size={16} className="animate-spin" />} 匯入 Excel</button>
@@ -1463,42 +1520,8 @@ const TripPlanner = ({
         </div>
       </header>
 
-      {/* NEW: Share Modal */}
-      {isShareModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
-              <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col border ${theme.border} animate-in zoom-in-95`}>
-                  <div className="p-6 text-center border-b border-[#F0F0F0]">
-                      <div className={`w-12 h-12 bg-[#F2F0EB] rounded-full flex items-center justify-center mx-auto mb-3 ${theme.primary}`}>
-                          <Share2 size={24} />
-                      </div>
-                      <h2 className="text-xl font-serif font-bold text-[#3A3A3A]">邀請旅伴協作</h2>
-                      <p className="text-xs text-[#888] mt-2 leading-relaxed">
-                          輸入對方的 Email (Google 帳號)，<br/>他們將可透過此 App 共同編輯這個行程。
-                      </p>
-                  </div>
-                  <div className="p-6">
-                      <label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">旅伴 Email</label>
-                      <input 
-                          type="email" 
-                          placeholder="partner@gmail.com" 
-                          value={shareEmail} 
-                          onChange={e => setShareEmail(e.target.value)} 
-                          className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} 
-                      />
-                  </div>
-                  <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] flex gap-3`}>
-                      <button onClick={() => setIsShareModalOpen(false)} className={`flex-1 py-2.5 text-xs font-bold text-[#888] hover:${theme.hover} rounded-lg`}>取消</button>
-                      <button onClick={handleShareProject} disabled={isSharing} className={`flex-1 ${theme.primaryBg} text-white py-2.5 rounded-lg text-xs font-bold hover:opacity-90 flex items-center justify-center gap-2`}>
-                          {isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>} 
-                          {isSharing ? "邀請中..." : "送出邀請"}
-                      </button>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* Main Content (Keep existing code) */}
       <main className="max-w-3xl mx-auto px-4 py-6 pb-24 md:px-6">
+        {/* Same Main Content */}
         {viewMode === 'categoryManager' ? (
           <div className="space-y-4 animate-in fade-in duration-300">
              <div className="flex justify-between items-center mb-2">
@@ -1910,6 +1933,15 @@ const TripPlanner = ({
 
       <BottomNav theme={theme} viewMode={viewMode} setViewMode={setViewMode} openAddModal={openAddModal} />
 
+      {/* Share Modal */}
+      <ShareModal 
+        isOpen={isShareModalOpen} 
+        onClose={() => setIsShareModalOpen(false)} 
+        onInvite={handleInviteUser}
+        isInviting={isInviting}
+        theme={theme}
+      />
+
       {isCategoryEditModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
           <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border} animate-in zoom-in-95`}>
@@ -2057,8 +2089,16 @@ const TripPlanner = ({
               <form id="companion-form" onSubmit={handleAddCompanion} className="space-y-5">
                 <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">新增成員</label><div className="flex gap-2"><input type="text" placeholder="名字..." value={newCompanionName} onChange={(e) => setNewCompanionName(e.target.value)} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /><button type="submit" className="bg-[#3A3A3A] text-white px-4 rounded-lg hover:opacity-90"><Plus size={20} /></button></div></div>
                 <div>
-                  <div className="flex justify-between items-end mb-1.5"><label className="block text-xs font-bold text-[#888] uppercase">目前成員</label>{companions.length > 0 && <button type="button" onClick={handleClearAllCompanions} className={`text-[10px] text-[#C55A5A] hover:${theme.dangerBg} px-2 py-1 rounded flex items-center gap-1`}><Trash2 size={12} />全て削除</button>}</div>
+                  <div className="flex justify-between items-end mb-1.5"><label className="block text-xs font-bold text-[#888] uppercase">目前成員</label>{companions.length > 0 && <button type="button" onClick={handleClearAllCompanions} className={`text-[10px] text-[#C55A5A] hover:${theme.dangerBg} px-2 py-1 rounded flex items-center gap-1`}><Trash2 size={12} />全刪</button>}</div>
                   <div className={`bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 space-y-2 max-h-48 overflow-y-auto`}>{companions.length === 0 ? <div className="text-center py-4 text-[#AAA] text-xs">無</div> : companions.map((c, i) => (<div key={`${c}-${i}`} className={`flex items-center justify-between p-2 bg-white rounded shadow-sm border ${theme.border}`}><div className="flex items-center gap-3 flex-1 min-w-0"><div className={`w-8 h-8 rounded-full ${getAvatarColor(i)} flex items-center justify-center text-[#3A3A3A] text-sm font-bold font-serif shadow-sm border border-white`}>{c.charAt(0).toUpperCase()}</div>{editingCompanionIndex === i ? <input type="text" value={editingCompanionName} onChange={(e) => setEditingCompanionName(e.target.value)} className={`flex-1 border-b ${theme.primaryBorder} outline-none text-base text-[#3A3A3A] py-0.5 font-serif`} autoFocus onBlur={() => saveEditCompanion(i)} onKeyDown={(e) => {if(e.key==='Enter'){e.preventDefault();saveEditCompanion(i)}}} /> : <span className={`text-sm font-bold text-[#3A3A3A] truncate cursor-pointer hover:${theme.primary} font-serif`} onClick={() => startEditCompanion(i, c)}>{c}</span>}</div><div className="flex gap-1 ml-2">{editingCompanionIndex === i ? <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => saveEditCompanion(i)} className={`${theme.primary} hover:${theme.hover} p-1.5 rounded`}><Check size={14} /></button> : <button type="button" onClick={() => handleRemoveCompanion(i)} className={`text-[#C55A5A] hover:${theme.dangerBg} p-1.5 rounded`}><Minus size={14} /></button>}</div></div>))}</div>
+                </div>
+                {/* 增加提示 */}
+                <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => {setIsCompanionModalOpen(false); setIsShareModalOpen(true);}}>
+                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500"><UserPlus size={16}/></div>
+                    <div>
+                        <div className="text-xs font-bold text-slate-600">邀請其他人協作？</div>
+                        <div className="text-[10px] text-slate-400">點此發送 Google Drive 編輯權限邀請</div>
+                    </div>
                 </div>
               </form>
             </div>
@@ -2083,7 +2123,7 @@ const TripPlanner = ({
                ) : cloudFiles.length === 0 ? (
                    <div className="text-center py-8 text-[#888] text-xs">
                         找不到任何 TravelApp_ 開頭的檔案<br/>
-                        <span className="text-[10px] opacity-70">(僅支援 Google 試算表格式，不支援直接上傳的 .xlsx)</span>
+                        <span className="text-[10px] opacity-70">(僅支援 Google 試算表格式，且未被丟棄)</span>
                    </div>
                ) : (
                    <div className="space-y-1">
@@ -2099,7 +2139,11 @@ const TripPlanner = ({
                                </div>
                                <div className="flex-1 min-w-0">
                                    <div className="font-bold text-[#3A3A3A] text-sm truncate">{file.name.replace('TravelApp_', '').replace('.xlsx', '')}</div>
-                                   <div className="text-[10px] text-[#888]">{new Date(file.modifiedTime).toLocaleString()}</div>
+                                   <div className="flex justify-between items-center text-[10px] text-[#888]">
+                                        <span>{new Date(file.modifiedTime).toLocaleString()}</span>
+                                        {/* 顯示是否為他人分享 */}
+                                        {file.owners && !file.owners.some(o => o.me) && <span className="bg-orange-100 text-orange-600 px-1 rounded flex items-center gap-0.5"><Users size={8}/>共享</span>}
+                                   </div>
                                </div>
                                {isProcessingCloudFile ? <Loader2 size={16} className="animate-spin text-[#A98467]"/> : <ChevronRight size={16} className="text-[#CCC] group-hover:text-[#A98467]" />}
                            </button>

@@ -8,7 +8,7 @@ import {
   Ticket, Bus, Car, Ship, Music, Gamepad2, Gift, Shirt, Briefcase, 
   Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
   Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2, RefreshCw, Printer,
-  Calendar, Tag, ChevronDown, Divide, UserPlus, Share2 // Added UserPlus, Share2
+  Calendar, Tag, ChevronDown, Divide, Share2
 } from 'lucide-react';
 
 // --- Icon Registry ---
@@ -17,18 +17,15 @@ export const ICON_REGISTRY = {
   ShoppingBag, Coins, Bus, Car, Ship, Ticket, Palmtree, 
   Tent, Music, Gamepad2, Gift, Shirt, Briefcase, Smartphone, 
   Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
-  Flower2, Luggage, Calculator, Wallet, Receipt, Star,
-  UserPlus, Share2 // Register new icons
+  Flower2, Luggage, Calculator, Wallet, Receipt, Star
 };
 
 export const getIconComponent = (iconName) => ICON_REGISTRY[iconName] || Camera;
 
 // --- Google API ---
 export const GOOGLE_CLIENT_ID = "456137719976-dp4uin8ae10f332qbhqm447nllr2u4ec.apps.googleusercontent.com";
-// Scope 說明:
-// drive.file: 管理由此 App 建立的檔案 (包含修改權限)
-// drive.readonly: 讀取所有檔案 (包含別人分享給你的檔案)
-// spreadsheets: 讀寫試算表內容
+
+// 優化：包含 drive.readonly 與 drive.file 以確保能讀取他人分享的檔案，並編輯自己有權限的檔案
 export const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly";
 
 // --- Defaults ---
@@ -67,7 +64,7 @@ export const AVATAR_COLORS = [
   'bg-[#B4A5A5]', // 煙燻玫瑰 (Muted Rose) - 深粉紅
   'bg-[#9FA3A8]', // 冷灰色 (Cool Grey) - 中性色
   'bg-[#B2A496]', // 灰褐色 (Taupe) - 棕色系
-  'bg-[#7D8F98]', // 岩石藍 (Slate Blue) - 深藍色系
+  'bg-[#7D8F98]', // 岩石藍 (Slate Blue) - 深藍色系 (加強對比)
   'bg-[#A99F98]', // 暖灰色 (Warm Grey) - 暖灰
   'bg-[#9DA6A0]', // 青瓷灰 (Grey Green) - 淺綠灰
   'bg-[#C8A6A6]', // 豆沙紅 (Bean Red) - 紅色系
