@@ -7,27 +7,28 @@ import { generateNewProjectData, parseProjectDataFromGAPI } from './utils/helper
 export default function App() {
   const [currentView, setCurrentView] = useState('home'); 
   const [activeProject, setActiveProject] = useState(null);
-  const [currentThemeId, setCurrentThemeId] = useState('mori');
+  // DEFAULT THEME SET TO MAGIC
+  const [currentThemeId, setCurrentThemeId] = useState('magic');
   const [isImporting, setIsImporting] = useState(false);
   
   // --- LocalStorage Logic ---
   const [projects, setProjects] = useState(() => {
     try {
       const savedProjects = localStorage.getItem('tripPlanner_projects');
-      return savedProjects ? JSON.parse(savedProjects) : [{ id: 1, name: '東京 5 日遊', lastModified: new Date().toISOString() }];
+      return savedProjects ? JSON.parse(savedProjects) : [{ id: 1, name: '魔法之旅', lastModified: new Date().toISOString() }];
     } catch (e) {
       console.error("Failed to load projects", e);
-      return [{ id: 1, name: '東京 5 日遊', lastModified: new Date().toISOString() }];
+      return [{ id: 1, name: '魔法之旅', lastModified: new Date().toISOString() }];
     }
   });
 
   const [allProjectsData, setAllProjectsData] = useState(() => {
     try {
       const savedData = localStorage.getItem('tripPlanner_allData');
-      return savedData ? JSON.parse(savedData) : { 1: generateNewProjectData('東京 5 日遊') };
+      return savedData ? JSON.parse(savedData) : { 1: generateNewProjectData('魔法之旅') };
     } catch (e) {
       console.error("Failed to load project data", e);
-      return { 1: generateNewProjectData('東京 5 日遊') };
+      return { 1: generateNewProjectData('魔法之旅') };
     }
   });
 
@@ -224,11 +225,13 @@ export default function App() {
     }
   };
 
-  const theme = (THEMES && currentThemeId && THEMES[currentThemeId]) ? THEMES[currentThemeId] : THEMES.mori; 
+  // Get current Theme object (Defaults to Magic)
+  const theme = (THEMES && currentThemeId && THEMES[currentThemeId]) ? THEMES[currentThemeId] : THEMES.magic; 
 
   const handleOpenProject = (project) => {
     const pData = allProjectsData[project.id];
-    const savedThemeId = pData?.themeId || 'mori';
+    // Default to magic if no theme saved
+    const savedThemeId = pData?.themeId || 'magic';
     setCurrentThemeId(savedThemeId);
     setActiveProject(project);
     setCurrentView('planner'); 
@@ -239,7 +242,7 @@ export default function App() {
   const handleAddProject = () => {
     const nextId = projects.length > 0 ? Math.max(...projects.map(p => p.id)) + 1 : 1;
     const displayNum = (projects.length + 1).toString().padStart(2, '0');
-    const newName = `我的旅程 ${displayNum}`;
+    const newName = `魔法之旅 ${displayNum}`;
     const newProject = { id: nextId, name: newName, lastModified: new Date().toISOString() };
     setProjects([...projects, newProject]);
     setAllProjectsData(prev => ({ ...prev, [nextId]: generateNewProjectData(newName) }));

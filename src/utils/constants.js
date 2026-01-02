@@ -8,7 +8,7 @@ import {
   Ticket, Bus, Car, Ship, Music, Gamepad2, Gift, Shirt, Briefcase, 
   Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
   Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2, RefreshCw, Printer,
-  Calendar, Tag, ChevronDown, Divide, Share2
+  Calendar, Tag, ChevronDown, Divide, Share2, Sparkles, Scroll, Feather
 } from 'lucide-react';
 
 // --- Icon Registry ---
@@ -17,7 +17,8 @@ export const ICON_REGISTRY = {
   ShoppingBag, Coins, Bus, Car, Ship, Ticket, Palmtree, 
   Tent, Music, Gamepad2, Gift, Shirt, Briefcase, Smartphone, 
   Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
-  Flower2, Luggage, Calculator, Wallet, Receipt, Star
+  Flower2, Luggage, Calculator, Wallet, Receipt, Star, 
+  Sparkles, Scroll, Feather
 };
 
 export const getIconComponent = (iconName) => ICON_REGISTRY[iconName] || Camera;
@@ -25,7 +26,6 @@ export const getIconComponent = (iconName) => ICON_REGISTRY[iconName] || Camera;
 // --- Google API ---
 export const GOOGLE_CLIENT_ID = "456137719976-dp4uin8ae10f332qbhqm447nllr2u4ec.apps.googleusercontent.com";
 
-// 優化：包含 drive.readonly 與 drive.file 以確保能讀取他人分享的檔案，並編輯自己有權限的檔案
 export const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly";
 
 // --- Defaults ---
@@ -48,27 +48,38 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
   { id: 'other', label: '其他', icon: 'Coins' },
 ];
 
+// --- Magical & Vintage Category Colors ---
 export const CATEGORY_COLORS = [
-  'bg-[#F2F4F1]', 'bg-[#F7F0ED]', 'bg-[#F4EDE6]', 'bg-[#EFF1F3]', 
-  'bg-[#EEEFF2]', 'bg-[#F9F5F0]', 'bg-[#EFF4F7]', 'bg-[#E6F0F5]',
-  'bg-[#FFF5F7]', 'bg-[#F7F3EF]', 'bg-[#EAEAEA]', 'bg-[#FFD6D6]',
-  'bg-[#D6E4FF]', 'bg-[#D6FFD9]', 'bg-[#FFFBD6]', 'bg-[#EAD6FF]'
+  'bg-[#E3DAC9]', // Bone
+  'bg-[#D4C5A5]', // Parchment Dark
+  'bg-[#C0B283]', // Antique Gold
+  'bg-[#D8CAB8]', // Dust
+  'bg-[#E6D0CE]', // Faded Red
+  'bg-[#CED4DA]', // Silver
+  'bg-[#D1E8E2]', // Pale Magic
+  'bg-[#D4AF37]', // Gold
+  'bg-[#A8B6BF]', // Fog
+  'bg-[#BFA5A5]', // Dried Rose
+  'bg-[#9E9E9E]', // Stone
+  'bg-[#8FBC8F]', // Herbology
+  'bg-[#E0FFFF]', // Lumos
+  'bg-[#FFE4E1]', // Love Potion
 ];
 
-// --- Morandi Color Palette for Avatars (質感莫蘭迪色系 - 增強差異化) ---
+// --- Hogwarts House & Magic Avatar Colors ---
 export const AVATAR_COLORS = [
-  'bg-[#A8B6BF]', // 霧霾藍 (Dusty Blue) - 冷色
-  'bg-[#D6C4C2]', // 藕粉色 (Pale Pinkish) - 暖色/粉
-  'bg-[#8C9E9E]', // 鼠尾草綠 (Sage Green) - 綠色系
-  'bg-[#C5B8A5]', // 卡其沙 (Sand/Khaki) - 黃色/大地系
-  'bg-[#B4A5A5]', // 煙燻玫瑰 (Muted Rose) - 深粉紅
-  'bg-[#9FA3A8]', // 冷灰色 (Cool Grey) - 中性色
-  'bg-[#B2A496]', // 灰褐色 (Taupe) - 棕色系
-  'bg-[#7D8F98]', // 岩石藍 (Slate Blue) - 深藍色系 (加強對比)
-  'bg-[#A99F98]', // 暖灰色 (Warm Grey) - 暖灰
-  'bg-[#9DA6A0]', // 青瓷灰 (Grey Green) - 淺綠灰
-  'bg-[#C8A6A6]', // 豆沙紅 (Bean Red) - 紅色系
-  'bg-[#9B8E8E]', // 芋泥灰 (Mauve Grey) - 紫色系
+  'bg-[#740001]', // Gryffindor Red
+  'bg-[#1A472A]', // Slytherin Green
+  'bg-[#0E1A40]', // Ravenclaw Blue
+  'bg-[#ECB939]', // Hufflepuff Yellow
+  'bg-[#5D5D5D]', // Iron/Dark Grey
+  'bg-[#4A2E79]', // Deep Magic Purple
+  'bg-[#800020]', // Burgundy
+  'bg-[#2F4F4F]', // Dark Slate
+  'bg-[#B8860B]', // Dark Goldenrod
+  'bg-[#483C32]', // Taupe/Owl
+  'bg-[#380E38]', // Forbidden Forest Dark
+  'bg-[#5C0922]', // Crimson
 ];
 
 export const COUNTRY_OPTIONS = [
@@ -77,9 +88,30 @@ export const COUNTRY_OPTIONS = [
   { code: 'TH', name: '泰國', flag: '🇹🇭', currency: 'THB', symbol: '฿', defaultRate: 0.90 },
   { code: 'US', name: '美國', flag: '🇺🇸', currency: 'USD', symbol: '$', defaultRate: 31.5 },
   { code: 'MY', name: '馬來西亞', flag: '🇲🇾', currency: 'MYR', symbol: 'RM', defaultRate: 6.8 },
+  { code: 'UK', name: '英國', flag: '🇬🇧', currency: 'GBP', symbol: '£', defaultRate: 40.5 },
 ];
 
 export const THEMES = {
+  magic: { 
+    id: 'magic',
+    label: '魔法', 
+    bg: 'bg-[#F2E8C4]', // 羊皮紙色 (Parchment)
+    card: 'bg-[#FFFCF5]', // 象牙白紙張
+    primary: 'text-[#740001]', // 葛來分多深紅
+    primaryHex: '#740001',
+    primaryBg: 'bg-[#740001]',
+    primaryBorder: 'border-[#740001]',
+    accent: 'text-[#D4AF37]', // 金探子金
+    accentHex: '#D4AF37',
+    hover: 'hover:bg-[#E6DCC3]',
+    subText: 'text-[#5C5548]', // 墨水灰褐
+    border: 'border-[#C0B283]', // 古董金邊框
+    danger: 'text-[#8B0000]',
+    dangerBg: 'bg-[#FFE5E5]',
+    navActive: 'text-[#740001]',
+    navInactive: 'text-[#8C867A]',
+    selection: 'selection:bg-[#D4AF37] selection:text-[#2A2A2A]'
+  },
   mori: { 
     id: 'mori',
     label: '森', 

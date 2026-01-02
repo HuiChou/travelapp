@@ -114,32 +114,30 @@ export const formatLastModified = (isoString) => {
 // --- Generators ---
 export const getDefaultItinerary = () => ({
   0: [
-    { id: 101, type: 'flight', title: '抵達東京', time: '10:00', duration: 60, region: '成田', location: '成田機場', cost: 0, website: '', notes: '領取 Wifi' },
-    { id: 102, type: 'transport', title: '搭乘 NEX 前往新宿', time: '11:30', duration: 60, region: '東京', location: 'JR成田機場站', cost: 3070, website: 'https://www.jreast.co.jp/', notes: '需要指定席券' },
+    { id: 101, type: 'flight', title: '抵達倫敦', time: '10:00', duration: 60, region: '倫敦', location: '希斯洛機場', cost: 0, website: '', notes: '領取魔法部通行證' },
+    { id: 102, type: 'transport', title: '霍格華茲特快車', time: '11:00', duration: 120, region: '倫敦', location: '國王十字車站 9¾ 月台', cost: 1500, website: '', notes: '記得帶貓頭鷹' },
   ],
   1: [
-    { id: 201, type: 'sightseeing', title: '明治神宮', time: '09:00', duration: 120, region: '澀谷', location: '原宿', cost: 0, website: '', notes: '感受早晨的空氣' },
+    { id: 201, type: 'sightseeing', title: '斜角巷', time: '09:00', duration: 180, region: '倫敦', location: '斜角巷', cost: 5000, website: '', notes: '購買魔杖與長袍' },
   ]
 });
 
 export const getDefaultPackingList = () => [
-  { id: 1, title: '護照 (Passport)', completed: false },
-  { id: 2, title: 'Wifi 分享器', completed: false },
+  { id: 1, title: '護照 (Muggle Passport)', completed: false },
+  { id: 2, title: '魔杖 (Wand)', completed: false },
 ];
 
 export const getDefaultShoppingList = () => [
-  { id: 1, region: '東京車站', title: '東京香蕉', location: '東京車站一番街', cost: 1200, completed: false, notes: '伴手禮用', website: '' },
-  { id: 2, region: '新宿', title: '藥妝 (EVE)', location: '松本清', cost: 5000, completed: false, notes: '免稅櫃台在2F', website: '' },
+  { id: 1, region: '斜角巷', title: '柏蒂全口味豆', location: '蜂蜜公爵', cost: 300, completed: false, notes: '小心耳屎口味', website: '' },
+  { id: 2, region: '活米村', title: '奶油啤酒', location: '三根掃帚', cost: 500, completed: false, notes: '熱熱喝最好', website: '' },
 ];
 
 export const getDefaultFoodList = () => [
-  { id: 1, region: '涉谷', title: '挽肉與米', location: '涉谷道玄坂', cost: 2000, notes: '早上9點開始發整理券', completed: false, website: 'https://www.hikiniku-to-come.com/' },
-  { id: 2, region: '新宿', title: 'Harbs', location: 'Lumine Est 新宿', cost: 1500, notes: '水果千層必吃', completed: false, website: '' },
+  { id: 1, region: '霍格華茲', title: '學院大餐', location: '大禮堂', cost: 0, notes: '準時開飯', completed: false, website: '' },
 ];
 
 export const getDefaultSightseeingList = () => [
-  { id: 1, region: '淺草', title: '雷門淺草寺', location: '淺草', cost: 0, completed: false, notes: '求籤、買御守', website: '' },
-  { id: 2, region: '澀谷', title: 'SHIBUYA SKY', location: 'Scramble Square', cost: 2200, completed: false, notes: '需提前一個月預約夕陽場', website: 'https://www.shibuya-scramble-square.com/sky/' },
+  { id: 1, region: '蘇格蘭', title: '霍格華茲城堡', location: '高地', cost: 0, completed: false, notes: '注意移動的樓梯', website: '' },
 ];
 
 export const generateNewProjectData = (title) => {
@@ -153,28 +151,28 @@ export const generateNewProjectData = (title) => {
     { 
       id: 1, 
       date: startDateStr, 
-      region: '成田', 
+      region: '倫敦', 
       category: 'transport', 
-      title: 'NEX 成田特快', 
-      location: '成田機場', 
-      amount: 3070, 
-      currency: 'JPY', 
-      cost: 3070, 
+      title: '霍格華茲特快車票', 
+      location: '國王十字車站', 
+      amount: 1500, 
+      currency: 'GBP', 
+      cost: 1500, 
       payer: 'Me', 
       shares: ['Me'], 
       details: [
-        { id: 'd1', payer: 'Me', target: 'Me', amount: 3070 }
+        { id: 'd1', payer: 'Me', target: 'Me', amount: 1500 }
       ],
-      notes: '先代墊全額',
+      notes: '車上買零食',
       costType: 'FOREIGN'
     }
   ];
 
   return {
-    themeId: 'mori',
+    themeId: 'magic', // CHANGED TO MAGIC DEFAULT
     tripSettings: { title: title, startDate: startDateStr, endDate: endDateStr, days: 3 },
     companions: ['Me'],
-    currencySettings: { selectedCountry: COUNTRY_OPTIONS[0], exchangeRate: COUNTRY_OPTIONS[0].defaultRate },
+    currencySettings: { selectedCountry: COUNTRY_OPTIONS[5], exchangeRate: COUNTRY_OPTIONS[5].defaultRate }, // Default UK
     categories: {
       itinerary: DEFAULT_ITINERARY_CATEGORIES,
       expense: DEFAULT_EXPENSE_CATEGORIES
@@ -536,7 +534,7 @@ export const parseProjectDataFromGAPI = (fileId, fileName, valueRanges) => {
   );
 
   return {
-    themeId: 'mori',
+    themeId: 'magic', // CHANGED
     tripSettings: { title, startDate, endDate, days },
     companions: newCompanions,
     currencySettings: { selectedCountry, exchangeRate },
