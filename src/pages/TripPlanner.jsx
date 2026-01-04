@@ -10,7 +10,8 @@ import {
   Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
   Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2, RefreshCw, Printer,
   Calendar, Tag, ChevronDown, Divide, Filter, FileSpreadsheet, FilterX,
-  Image as ImageIcon, ExternalLink, ArrowDownCircle, Share2, UserPlus, Mail, UserCog
+  Image as ImageIcon, ExternalLink, ArrowDownCircle, Share2, UserPlus, Mail, UserCog,
+  Ghost, Droplets, Flame, Hammer
 } from 'lucide-react';
 
 import { 
@@ -78,9 +79,14 @@ const TripPlanner = ({
   // Share/Collaboration State
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
-  // 新增: 儲存雲端協作人員名單
   const [collaborators, setCollaborators] = useState([]);
   const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(false);
+
+  // Text Color helpers based on theme
+  const textColor = theme.isDark ? 'text-gray-200' : 'text-[#3A3A3A]';
+  const subTextColor = theme.isDark ? 'text-gray-400' : 'text-[#888]';
+  const cardBg = theme.isDark ? 'bg-[#303030]' : 'bg-white';
+  const borderColor = theme.border;
 
   useEffect(() => {
     if (window.XLSX) {
@@ -121,13 +127,11 @@ const TripPlanner = ({
       }
   };
 
-  // 新增: 讀取目前檔案的權限列表 (協作人員)
   const fetchCollaborators = async () => {
       if (!googleUser || !gapiInited || !googleDriveFileId) return;
       
       setIsLoadingCollaborators(true);
       try {
-          // 呼叫 permissions.list API
           const response = await window.gapi.client.drive.permissions.list({
               fileId: googleDriveFileId,
               fields: 'permissions(id, type, emailAddress, role, displayName, photoLink)',
@@ -135,7 +139,6 @@ const TripPlanner = ({
           });
           
           if (response.result && response.result.permissions) {
-              // 過濾出擁有編輯權限的人 (owner, writer, organizer)
               const writers = response.result.permissions.filter(p => 
                   ['owner', 'writer', 'organizer'].includes(p.role)
               );
@@ -153,13 +156,13 @@ const TripPlanner = ({
       try {
         const ranges = [
             "專案概覽!A:B", 
-            "行程表!A:K", // Expanded for Region
+            "行程表!A:K",
             "費用!A:P", 
             "管理類別!A:E", 
             "行李!A:B", 
-            "購物!A:I", // Expanded for Website
-            "美食!A:I", // Expanded for Website
-            "景點!A:I"  // Expanded for Website
+            "購物!A:I", 
+            "美食!A:I", 
+            "景點!A:I" 
         ];
         
         const response = await window.gapi.client.sheets.spreadsheets.values.batchGet({
@@ -226,7 +229,6 @@ const TripPlanner = ({
               ["旅行人員", companions.join(", ")]
           ];
 
-          // Added Region Column to Itinerary
           const itinHeader = ["天數", "時間", "停留(分)", "地區", "類別", "標題", "地點", "預算", "備註", "圖片名稱", "圖片連結"];
           const itinRows = [];
           Object.keys(itineraries).sort((a,b)=>a-b).forEach(dayIndex => {
@@ -238,7 +240,7 @@ const TripPlanner = ({
                       `Day ${parseInt(dayIndex) + 1}`,
                       item.time,
                       item.duration,
-                      item.region || '', // 新增地區
+                      item.region || '',
                       cat ? cat.label : item.type,
                       item.title,
                       item.location,
@@ -307,7 +309,6 @@ const TripPlanner = ({
           const packingRows = packingList.map(i => [i.title, i.completed ? "已完成" : "未完成"]);
           const packingValues = [packingHeader, ...packingRows];
 
-          // Added Website Column to Lists
           const shopHeader = ["地區", "物品", "地點", "預算", "狀態", "備註", "網站連結", "圖片名稱", "圖片連結"];
           const shopRows = shoppingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已購買" : "未購買", i.notes, i.website || '', i.image?.name || '', i.image?.link || '']);
           const shopValues = [shopHeader, ...shopRows];
@@ -328,7 +329,6 @@ const TripPlanner = ({
               setGoogleDriveFileId(targetFileId); 
           }
 
-          // 1. 確保所有 Sheet 都存在
           const ssMeta = await window.gapi.client.sheets.spreadsheets.get({ spreadsheetId: targetFileId });
           const existingSheetTitles = ssMeta.result.sheets.map(s => s.properties.title);
           const requiredSheets = ["專案概覽", "行程表", "費用", "管理類別", "行李", "購物", "美食", "景點"];
@@ -347,14 +347,12 @@ const TripPlanner = ({
               });
           }
 
-          // 2.【優化關鍵】先清除這些工作表的內容，確保「刪除」的資料不會殘留 (Ghost Rows)
           const rangesToClear = requiredSheets.map(sheet => `${sheet}!A:Z`);
           await window.gapi.client.sheets.spreadsheets.values.batchClear({
               spreadsheetId: targetFileId,
               resource: { ranges: rangesToClear }
           });
 
-          // 3. 寫入最新的完整資料
           const dataBody = [
               { range: "專案概覽!A1", values: overviewValues },
               { range: "行程表!A1", values: itinValues },
@@ -396,7 +394,6 @@ const TripPlanner = ({
     }
   };
 
-  // Share / Invite Logic
   const handleInviteUser = async (email) => {
     if (!googleUser || !gapiInited) {
         alert("請先登入 Google 帳號。");
@@ -405,14 +402,12 @@ const TripPlanner = ({
     
     setIsInviting(true);
     try {
-        // 1. Ensure file exists on cloud
         let targetId = googleDriveFileId;
         if (!targetId) {
             targetId = await handleSaveToGoogleSheet(true);
             if (!targetId) throw new Error("無法建立雲端檔案");
         }
 
-        // 2. Create Permission
         await window.gapi.client.drive.permissions.create({
             fileId: targetId,
             resource: {
@@ -425,8 +420,6 @@ const TripPlanner = ({
 
         alert(`邀請發送成功！\n已將編輯權限分享給 ${email}`);
         setIsShareModalOpen(false);
-        
-        // 優化: 邀請成功後立即刷新協作人員列表
         fetchCollaborators();
 
     } catch (error) {
@@ -513,7 +506,7 @@ const TripPlanner = ({
                   id: data.id,
                   link: data.webViewLink,
                   thumbnail: data.thumbnailLink,
-                  name: formData.title // Store the name for export
+                  name: formData.title 
               }
           }));
       } catch (err) {
@@ -667,7 +660,6 @@ const TripPlanner = ({
         const wsOverview = window.XLSX.utils.aoa_to_sheet(overviewData);
         window.XLSX.utils.book_append_sheet(wb, wsOverview, "專案概覽");
 
-        // Added Region Column to Itinerary
         const itinHeader = ["天數", "時間", "停留(分)", "地區", "類別", "標題", "地點", "預算", "備註", "圖片名稱", "圖片連結"];
         const itinRows = [];
         Object.keys(itineraries).sort((a,b)=>a-b).forEach(dayIndex => {
@@ -678,7 +670,7 @@ const TripPlanner = ({
                     `Day ${parseInt(dayIndex) + 1}`,
                     item.time,
                     item.duration,
-                    item.region || '', // 新增地區
+                    item.region || '',
                     cat ? cat.label : item.type,
                     item.title,
                     item.location,
@@ -750,7 +742,6 @@ const TripPlanner = ({
         const packingRows = packingList.map(i => [i.title, i.completed ? "已完成" : "未完成"]);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([packingHeader, ...packingRows]), "行李");
 
-        // Added Website Column to Lists
         const shopHeader = ["地區", "物品", "地點", "預算", "狀態", "備註", "網站連結", "圖片名稱", "圖片連結"];
         const shopRows = shoppingList.map(i => [i.region, i.title, i.location, i.cost, i.completed ? "已購買" : "未購買", i.notes, i.website || '', i.image?.name || '', i.image?.link || '']);
         window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([shopHeader, ...shopRows]), "購物");
@@ -909,7 +900,6 @@ const TripPlanner = ({
     }
 
     setEditingItem(item);
-    // 編輯時不再自動換算，保持原始儲存的數值與幣別
     let displayCost = item.cost;
     let currentCostType = item.costType || 'FOREIGN';
     
@@ -950,7 +940,6 @@ const TripPlanner = ({
     e.preventDefault();
     let newItem = { ...formData, id: editingItem ? editingItem.id : Date.now() };
     
-    // 核心修正：不再進行幣別換算儲存
     if (formData.cost) {
       newItem.cost = parseFloat(formData.cost);
     } else {
@@ -961,32 +950,20 @@ const TripPlanner = ({
     if (viewMode === 'expenses') {
       newItem.currency = currencySettings.selectedCountry.currency;
 
-      // ---------------------------------------------------------
-      // 優化：若沒有設定分攤細節 (details 為空)，則預設為「每人各付各的」
-      // ---------------------------------------------------------
       if (!newItem.details || newItem.details.length === 0) {
-         const unitCost = newItem.cost; // 輸入的金額視為「每人」的金額
+         const unitCost = newItem.cost; 
          
-         // 自動產生所有旅伴的各付各紀錄
          newItem.details = companions.map((person, index) => ({
-             id: Date.now() + index + Math.random(), // 確保 ID 唯一
+             id: Date.now() + index + Math.random(), 
              payer: person,
              target: person,
              amount: unitCost
          }));
 
-         // 更新卡片總金額為 (單人金額 * 人數)
          newItem.cost = unitCost * companions.length;
-         
-         // 設定顯示用的主要付款人 (通常列表顯示第一位)
          newItem.payer = companions[0];
-         
-         // 設定分攤對象為所有人
          newItem.shares = [...companions];
       } 
-      // ---------------------------------------------------------
-      // 原有邏輯：若已有設定分攤細節
-      // ---------------------------------------------------------
       else if (newItem.details && newItem.details.length > 0) {
          newItem.payer = newItem.details[0].payer;
          const targets = new Set();
@@ -1066,7 +1043,6 @@ const TripPlanner = ({
   
   const removeSplitDetail = (detailId) => { 
       const updatedDetails = formData.details.filter(d => d.id !== detailId);
-      // Recalculate Total Cost based on remaining details
       let newCost = 0;
       updatedDetails.forEach(d => {
          if (d.target === 'EACH') newCost += (parseFloat(d.amount)||0) * companions.length;
@@ -1083,7 +1059,6 @@ const TripPlanner = ({
           return { ...d, ...updates };
       });
       
-      // Auto-calculate Total Cost when detail amount changes
       let newCost = 0;
       updatedDetails.forEach(d => {
          if (d.target === 'EACH') {
@@ -1114,7 +1089,6 @@ const TripPlanner = ({
 
   const handleOpenCompanionModal = () => {
       setIsCompanionModalOpen(true);
-      // 打開 Modal 時嘗試讀取雲端權限
       fetchCollaborators();
   };
 
@@ -1124,9 +1098,8 @@ const TripPlanner = ({
       setIsSettingsOpen(true);
   };
 
-  // --- Statistics Logic (EXPERT OPTIMIZATION) ---
+  // --- Statistics Logic ---
   const statisticsData = useMemo(() => {
-    // 1. 基本過濾 (日期 & 類別) - 用於計算全域收支平衡 (personStats)
     const baseExpenses = expenses.filter(exp => {
         let matchesDay = true;
         if (statsDayFilter !== 'all') {
@@ -1141,23 +1114,17 @@ const TripPlanner = ({
         return matchesDay && matchesCategory;
     });
 
-    // 2. 計算全域成員收支 (基於目前的日期/類別篩選，但不考慮人員篩選)
-    // 這樣即使切換人員，上方的泡泡仍顯示該範圍內的總覽
     const personStats = {};
     companions.forEach(c => { personStats[c] = { paid: 0, share: 0, balance: 0 }; });
     const getSafeStat = (name) => { if (!personStats[name]) personStats[name] = { paid: 0, share: 0, balance: 0 }; return personStats[name]; };
 
-    // 匯率轉換
     const rate = currencySettings.exchangeRate || 1;
     const toForeign = (amount, type) => (type === 'TWD' ? (amount / rate) : amount);
 
-    // 擴展後的個人消費列表 (用於個人模式)
     let expandedConsumptionList = [];
-    // 擴展後的個人支付列表 (用於真實支付模式)
     let expandedPaymentList = [];
 
     baseExpenses.forEach(exp => {
-      // 2a. 計算收支平衡 (personStats)
       if (exp.details && exp.details.length > 0) {
           exp.details.forEach((d, idx) => {
               const dAmountRaw = parseFloat(d.amount) || 0;
@@ -1183,8 +1150,6 @@ const TripPlanner = ({
               currentPayers.forEach(p => getSafeStat(p).paid += paidPerPerson);
               currentTargets.forEach(t => getSafeStat(t).share += sharePerPerson);
 
-              // 2b. 建構個人支付列表 (expandedPaymentList) - 真實支付模式用
-              // 當付款人是 EACH 時，這裡會將其拆解成 N 筆支付記錄
               if (d.payer === 'EACH') {
                   companions.forEach(c => {
                       expandedPaymentList.push({
@@ -1203,7 +1168,7 @@ const TripPlanner = ({
                   expandedPaymentList.push({
                       ...exp,
                       id: `${exp.id}_pay_${idx}`,
-                      cost: totalLineCost, // 該付款人支付了整行的總額
+                      cost: totalLineCost, 
                       costType: 'FOREIGN',
                       currency: currencySettings.selectedCountry.currency,
                       payer: d.payer,
@@ -1213,7 +1178,6 @@ const TripPlanner = ({
                   });
               }
 
-              // 2c. 建構個人消費列表 (expandedConsumptionList) - 個人消費模式用
               if (d.target === 'ALL' || d.target === 'EACH') {
                   companions.forEach(c => {
                       expandedConsumptionList.push({
@@ -1222,7 +1186,7 @@ const TripPlanner = ({
                            cost: sharePerPerson, 
                            costType: 'FOREIGN', 
                            currency: currencySettings.selectedCountry.currency,
-                           payer: c, // 在個人模式下，'payer' 代表「消費者」
+                           payer: c, 
                            realPayer: (d.payer === 'EACH' ? c : d.payer), 
                            isVirtual: true, 
                            noteSuffix: `(${d.target === 'EACH' ? '各付' : '均攤'})` 
@@ -1235,7 +1199,7 @@ const TripPlanner = ({
                       cost: sharePerPerson, 
                       costType: 'FOREIGN',
                       currency: currencySettings.selectedCountry.currency,
-                      payer: d.target, // 在個人模式下，'payer' 代表「消費者」
+                      payer: d.target, 
                       realPayer: (d.payer === 'EACH' ? d.target : d.payer), 
                       isVirtual: true, 
                       noteSuffix: `` 
@@ -1243,7 +1207,6 @@ const TripPlanner = ({
               }
           });
       } else {
-          // 無詳細分帳，簡易模式
           const amountForeign = toForeign(exp.cost || 0, exp.costType);
           const payer = exp.payer || 'Unknown';
           getSafeStat(payer).paid += amountForeign;
@@ -1252,11 +1215,10 @@ const TripPlanner = ({
           const perPersonCost = amountForeign / consumers.length;
 
           consumers.forEach(c => {
-               if (c === '全員') { /* 已在上方處理 */ }
+               if (c === '全員') { }
                else { getSafeStat(c).share += perPersonCost; }
           });
           
-          // 簡易模式 - 支付列表
           if (exp.payer === 'EACH') {
               const perPersonPay = amountForeign / companions.length;
               companions.forEach((c, idx) => {
@@ -1286,7 +1248,6 @@ const TripPlanner = ({
               });
           }
 
-          // 簡易模式 - 消費列表
           if (exp.shares && exp.shares.length > 0) {
               exp.shares.forEach((shareName, sIdx) => {
                    expandedConsumptionList.push({
@@ -1313,43 +1274,33 @@ const TripPlanner = ({
       }
     });
     
-    // 計算結算建議
     Object.keys(personStats).forEach(p => personStats[p].balance = personStats[p].paid - personStats[p].share);
     const transactions = solveDebts(personStats);
 
-    // 3. 準備顯示用的列表 (根據 statsMode 選擇來源)
     let displaySource = statsMode === 'real' ? expandedPaymentList : expandedConsumptionList;
 
-    // 4. 套用「人員篩選」(statsPersonFilter)
-    // 這是關鍵：在此階段過濾，讓後續的圖表與每日明細只反映該成員
     let finalDisplayList = displaySource;
     if (statsPersonFilter !== 'all') {
         finalDisplayList = displaySource.filter(item => {
-            // 在 Real 模式：item.payer 是付款人 (若為 EACH 已被拆解成個別付款人)
-            // 在 Personal 模式：item.payer 是消費者 (已在上方 logic 設定)
             return item.payer === statsPersonFilter;
         });
     }
 
-    // 5. 計算圖表與每日明細 (使用過濾後的 finalDisplayList)
     const categoryStats = {};
     const dailyTotals = {};
 
     finalDisplayList.forEach(item => {
-        // 計算金額 (已經統一轉為外幣了，如果是 real 模式要注意原始幣別)
         let amount = 0;
         if (item.isVirtual) {
-            amount = item.cost; // 虛擬項目已經轉為 FOREIGN
+            amount = item.cost;
         } else {
             amount = toForeign(item.cost || 0, item.costType);
         }
         
-        // 類別統計
         const cat = item.category || 'other';
         if (!categoryStats[cat]) categoryStats[cat] = 0;
         categoryStats[cat] += amount;
 
-        // 每日明細
         const dateKey = item.date;
         if (!dailyTotals[dateKey]) dailyTotals[dateKey] = 0;
         dailyTotals[dateKey] += amount;
@@ -1359,23 +1310,21 @@ const TripPlanner = ({
         .sort((a, b) => new Date(a[0]) - new Date(b[0]))
         .map(([date, total]) => ({ date, total }));
 
-    // 排序最終顯示列表
     finalDisplayList = sortExpensesByRegionAndCategory(finalDisplayList);
 
     return { 
         personStats, 
         transactions, 
-        finalDisplayList, // 直接提供給 renderDetailedList 使用
+        finalDisplayList, 
         categoryStats, 
         sortedDailyTotals 
     };
   }, [expenses, companions, expenseCategories, statsDayFilter, statsCategoryFilter, statsPersonFilter, statsMode, tripSettings.startDate, currencySettings.exchangeRate]); 
 
   const renderDetailedList = () => {
-    // 優化：直接使用 useMemo 計算好的 finalDisplayList，不再重複篩選
     const sortedExpenses = statisticsData.finalDisplayList;
 
-    if (sortedExpenses.length === 0) return <div className="text-center text-[#888] py-8 text-sm">無符合條件的資料</div>;
+    if (sortedExpenses.length === 0) return <div className={`text-center py-8 text-sm ${subTextColor}`}>無符合條件的資料</div>;
 
     return sortedExpenses.map((exp, index) => {
        const prevExp = sortedExpenses[index - 1];
@@ -1383,7 +1332,6 @@ const TripPlanner = ({
        const categoryDef = expenseCategories.find(c => c.id === currentCategory) || { label: '未分類', icon: 'Coins' };
        const rate = currencySettings.exchangeRate || 1;
 
-       // 修正顯示邏輯：根據 costType 決定主顯示與副顯示
        let displayMain, displaySub;
        if (exp.costType === 'TWD' && !exp.isVirtual) {
            const twdVal = exp.cost || 0;
@@ -1391,7 +1339,6 @@ const TripPlanner = ({
            displayMain = `TWD ${formatMoney(twdVal)}`;
            displaySub = `(${currencySettings.selectedCountry.currency} ${formatMoney(foreignVal)})`;
        } else {
-           // 虛擬項目或外幣項目
            const foreignVal = exp.cost || 0;
            const twdVal = foreignVal * rate;
            displayMain = `${exp.currency || currencySettings.selectedCountry.currency} ${formatMoney(foreignVal)}`;
@@ -1402,16 +1349,15 @@ const TripPlanner = ({
        
        if (index === 0 || currentCategory !== prevExp?.category) {
          const CatIcon = getIconComponent(categoryDef.icon);
-         // 使用新計算的 categoryStats (已包含人員篩選結果)
          const categoryTotalForeign = statisticsData.categoryStats[currentCategory] || 0;
          const categoryTotalTWD = categoryTotalForeign * rate;
 
          categoryHeader = (
-           <div className={`sticky top-0 z-10 ${theme.card}/95 backdrop-blur-sm py-2 mb-2 mt-4 border-b ${theme.border} flex justify-between items-center animate-in fade-in first:mt-0`}>
+           <div className={`sticky top-0 z-10 ${cardBg}/95 backdrop-blur-sm py-2 mb-2 mt-4 border-b ${borderColor} flex justify-between items-center animate-in fade-in first:mt-0`}>
              <div className={`text-sm font-bold ${theme.primary} flex items-center gap-2`}><CatIcon size={16} /> {categoryDef.label}</div>
              <div className="text-right">
                 <div className={`text-xs font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(categoryTotalForeign)}</div>
-                <div className="text-[10px] text-[#999] font-medium">(NT$ {formatMoney(categoryTotalTWD)})</div>
+                <div className={`text-[10px] ${subTextColor} font-medium`}>(NT$ {formatMoney(categoryTotalTWD)})</div>
              </div>
            </div>
          );
@@ -1420,25 +1366,24 @@ const TripPlanner = ({
        return (
          <React.Fragment key={exp.id}>
            {categoryHeader}
-           <div className={`py-3 flex justify-between items-center ${index !== sortedExpenses.length - 1 ? `border-b ${theme.border}` : ''}`}>
+           <div className={`py-3 flex justify-between items-center ${index !== sortedExpenses.length - 1 ? `border-b ${borderColor}` : ''}`}>
              <div className="flex items-center gap-3">
-               <div className={`w-8 h-8 rounded-full ${theme.hover} flex items-center justify-center ${theme.primary} shrink-0`}><ItemIcon size={16} /></div>
+               <div className={`w-8 h-8 rounded-full ${theme.hover} flex items-center justify-center ${theme.primary} shrink-0 text-white`}><ItemIcon size={16} /></div>
                <div className="flex-1 min-w-0">
                  <div className="flex items-center gap-2">
-                    <div className="text-sm font-bold text-[#3A3A3A] font-serif truncate">{exp.title} {exp.noteSuffix && <span className="text-[10px] text-[#888] font-normal">{exp.noteSuffix}</span>}</div>
-                    {exp.image && <a href={exp.image.link} target="_blank" className="text-[#888] hover:text-[#5F6F52]" onClick={e => e.stopPropagation()}><ImageIcon size={14}/></a>}
+                    <div className={`text-sm font-bold ${textColor} font-serif truncate`}>{exp.title} {exp.noteSuffix && <span className={`text-[10px] ${subTextColor} font-normal`}>{exp.noteSuffix}</span>}</div>
+                    {exp.image && <a href={exp.image.link} target="_blank" className={`${subTextColor} hover:text-[#5F6F52]`} onClick={e => e.stopPropagation()}><ImageIcon size={14}/></a>}
                  </div>
-                 <div className="text-[10px] text-[#888] mt-1 flex flex-wrap gap-1 items-center">
+                 <div className={`text-[10px] ${subTextColor} mt-1 flex flex-wrap gap-1 items-center`}>
                    {statsMode === 'personal' ? (
-                     // 核心優化：付款人顯示 exp.payer (自己/消費者)，代墊者顯示 exp.realPayer (實際出錢的人)
                      <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>代墊:</span><PayerAvatar name={exp.realPayer} companions={companions} theme={theme}/><span>{exp.realPayer}</span></span></>
                    ) : (
-                     <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>分攤:</span>{exp.details && exp.details.some(d => d.target === 'ALL' || d.target === 'EACH') ? <span className={`${theme.hover} px-1 rounded ${theme.primary}`}>{exp.details.some(d=>d.target==='EACH')?'各付':'全員'}</span> : <span>{exp.shares ? exp.shares.length : 0}人</span>}</span></>
+                     <><span className="flex items-center gap-1"><span>付款:</span><PayerAvatar name={exp.payer} companions={companions} theme={theme}/><span>{exp.payer}</span></span><span className={`text-[#E6E2D3] mx-1`}>|</span><span className="flex items-center gap-1"><span>分攤:</span>{exp.details && exp.details.some(d => d.target === 'ALL' || d.target === 'EACH') ? <span className={`${theme.hover} px-1 rounded ${theme.primary} border border-current`}>{exp.details.some(d=>d.target==='EACH')?'各付':'全員'}</span> : <span>{exp.shares ? exp.shares.length : 0}人</span>}</span></>
                    )}
                  </div>
                </div>
              </div>
-             <div className="text-right shrink-0"><div className={`text-sm font-bold ${theme.accent} font-serif`}>{displayMain}</div><div className="text-[10px] text-[#999] font-medium">{displaySub}</div></div>
+             <div className="text-right shrink-0"><div className={`text-sm font-bold ${theme.accent} font-serif`}>{displayMain}</div><div className={`text-[10px] ${subTextColor} font-medium`}>{displaySub}</div></div>
            </div>
          </React.Fragment>
        );
@@ -1446,7 +1391,6 @@ const TripPlanner = ({
   };
 
   const getCategoryChartData = () => {
-    // 簡化：直接使用 statisticsData.categoryStats
     const data = statisticsData.categoryStats;
     const chartData = Object.entries(data)
         .map(([catId, amount]) => {
@@ -1461,7 +1405,6 @@ const TripPlanner = ({
 
   const { chartData: categoryChartData, maxAmount: maxCategoryAmount } = getCategoryChartData();
 
-  // Helper for Checklist Grouping
   const groupListByRegion = (list) => {
     const grouped = {};
     list.forEach(item => {
@@ -1476,41 +1419,40 @@ const TripPlanner = ({
   };
 
   return (
-    <div className={`min-h-screen ${theme.bg} text-[#464646] font-sans pb-32 ${theme.selection} overflow-x-hidden`}>
+    <div className={`min-h-screen ${theme.bg} ${textColor} font-sans pb-32 ${theme.selection} overflow-x-hidden transition-colors duration-300`}>
       <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx, .xls" className="hidden" />
-      <header className={`sticky top-0 z-[60] ${theme.bg}/95 backdrop-blur-md border-b ${theme.border}`}>
+      <header className={`sticky top-0 z-[60] ${theme.bg}/95 backdrop-blur-md border-b ${borderColor} transition-colors duration-300`}>
         <div className="max-w-3xl mx-auto px-4 py-3 md:px-6 md:py-4">
           <div className="flex justify-between items-center gap-3">
             <div className="flex items-start gap-4 flex-1 min-w-0">
-               {onBack && (<button onClick={onBack} className={`text-[#888] hover:${theme.primary} transition-colors p-2 -ml-3 rounded-full ${theme.hover} shrink-0`} title="回首頁"><Home size={28} strokeWidth={2.5} /></button>)}
+               {onBack && (<button onClick={onBack} className={`${subTextColor} hover:${theme.primary} transition-colors p-2 -ml-3 rounded-full ${theme.hover} shrink-0`} title="回首頁"><Home size={28} strokeWidth={2.5} /></button>)}
                <div className="min-w-0 flex-1">
-                 <h1 className="text-xl md:text-2xl font-serif font-bold tracking-wide text-[#3A3A3A] flex items-center gap-2 truncate pr-2"><span className="truncate">{tripSettings.title}</span></h1>
-                 <div className={`text-xs font-serif ${theme.subText} mt-1 tracking-widest uppercase pl-1 flex items-center gap-2 truncate`}><span>{tripSettings.startDate.replace(/-/g, '.')}</span><ArrowRight size={12} className="shrink-0" /><span>{tripSettings.endDate.replace(/-/g, '.')}</span><span className={`border-l ${theme.border} pl-2 ml-1 shrink-0`}>{tripSettings.days} 天</span></div>
+                 <h1 className={`text-xl md:text-2xl font-serif font-bold tracking-wide ${textColor} flex items-center gap-2 truncate pr-2`}><span className="truncate">{tripSettings.title}</span></h1>
+                 <div className={`text-xs font-serif ${subTextColor} mt-1 tracking-widest uppercase pl-1 flex items-center gap-2 truncate`}><span>{tripSettings.startDate.replace(/-/g, '.')}</span><ArrowRight size={12} className="shrink-0" /><span>{tripSettings.endDate.replace(/-/g, '.')}</span><span className={`border-l ${borderColor} pl-2 ml-1 shrink-0`}>{tripSettings.days} 天</span></div>
                </div>
             </div>
             <div className="flex gap-2 shrink-0 relative items-center">
-              {googleUser && (<div className="hidden sm:flex items-center gap-1 mr-1">{isAutoSaving || isSyncing ? (<div className="flex items-center gap-1 text-[10px] text-[#A98467] font-bold"><Loader2 size={12} className="animate-spin"/> 儲存中</div>) : (<div className="flex items-center gap-1 text-[10px] text-[#5F6F52] font-bold opacity-70"><Cloud size={12}/> 已同步</div>)}</div>)}
-              <button type="button" onClick={handleOpenCurrencyModal} className={`p-2 rounded-full flex items-center gap-1.5 border border-transparent hover:${theme.border} ${theme.hover} ${theme.accent}`}><Coins size={18} /><span className="text-[10px] font-bold hidden sm:inline-block">{currencySettings?.selectedCountry?.currency || 'JPY'}</span></button>
+              {googleUser && (<div className="hidden sm:flex items-center gap-1 mr-1">{isAutoSaving || isSyncing ? (<div className={`flex items-center gap-1 text-[10px] ${theme.accent} font-bold`}><Loader2 size={12} className="animate-spin"/> 記錄中</div>) : (<div className={`flex items-center gap-1 text-[10px] ${theme.primary} font-bold opacity-70`}><Cloud size={12}/> 已同步</div>)}</div>)}
+              <button type="button" onClick={handleOpenCurrencyModal} className={`p-2 rounded-full flex items-center gap-1.5 border border-transparent hover:${borderColor} ${theme.hover} ${theme.accent}`}><Coins size={18} /><span className="text-[10px] font-bold hidden sm:inline-block">{currencySettings?.selectedCountry?.currency || 'JPY'}</span></button>
               
-              {/* NEW SHARE BUTTON */}
-              <button type="button" onClick={() => setIsShareModalOpen(true)} className={`p-2 rounded-full transition-colors text-[#5F6F52] hover:bg-[#F2F0EB]`} title="邀請協作"><Share2 size={20} /></button>
+              <button type="button" onClick={() => setIsShareModalOpen(true)} className={`p-2 rounded-full transition-colors ${theme.primary} hover:${theme.hover}`} title="邀請協作"><Share2 size={20} /></button>
               
-              <button type="button" onClick={handleOpenCompanionModal} className={`p-2 rounded-full transition-colors ${theme.subText} ${theme.hover}`}><Users size={20} /></button>
-              <button type="button" onClick={handleOpenSettingsModal} className={`p-2 rounded-full transition-colors ${theme.subText} ${theme.hover}`}><Settings size={20} /></button>
+              <button type="button" onClick={handleOpenCompanionModal} className={`p-2 rounded-full transition-colors ${subTextColor} ${theme.hover}`}><Users size={20} /></button>
+              <button type="button" onClick={handleOpenSettingsModal} className={`p-2 rounded-full transition-colors ${subTextColor} ${theme.hover}`}><Settings size={20} /></button>
               <div className="relative">
-                <button onClick={() => setIsFileMenuOpen(!isFileMenuOpen)} className={`p-2 rounded-full transition-colors ${theme.subText} ${theme.hover}`}><FileText size={20} /></button>
+                <button onClick={() => setIsFileMenuOpen(!isFileMenuOpen)} className={`p-2 rounded-full transition-colors ${subTextColor} ${theme.hover}`}><FileText size={20} /></button>
                 {isFileMenuOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsFileMenuOpen(false)}></div>
-                    <div className={`absolute right-0 top-full mt-2 w-64 ${theme.card} rounded-xl shadow-xl border ${theme.border} p-2 flex flex-col gap-1 z-50 animate-in fade-in zoom-in-95 duration-200`}>
-                      <div className={`px-4 py-2 text-xs font-bold text-[#888] uppercase tracking-wider border-b ${theme.border} mb-1 flex justify-between items-center`}><span>雲端同步 (Google)</span>{googleUser && <span className="text-[10px] text-green-600 flex items-center gap-1"><CheckCircle2 size={10}/> 已登入</span>}</div>
-                      <button onClick={() => { handleSaveToGoogleSheet(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 text-[#3A3A3A]`} disabled={isSyncing}>{isSyncing ? <Loader2 size={16} className="animate-spin text-[#3A3A3A]"/> : <RefreshCw size={16} className={theme.primary}/>} {isSyncing ? "同步中..." : "立即手動同步"}</button>
-                      <button onClick={() => { setIsFileMenuOpen(false); setIsCloudLoadModalOpen(true); fetchCloudFiles(); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 text-[#3A3A3A]`}><CloudDownload size={16} className={theme.primary}/> 讀取雲端檔案</button>
-                      <div className={`my-1 border-b ${theme.border}`}></div>
-                      <div className="px-4 py-2 text-xs font-bold text-[#888] uppercase tracking-wider">本機檔案</div>
-                      <button onClick={() => { fileInputRef.current.click(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 ${!isXlsxLoaded ? 'opacity-50 cursor-not-allowed' : 'text-[#3A3A3A]'}`} disabled={!isXlsxLoaded}>{isXlsxLoaded ? <Upload size={16} /> : <Loader2 size={16} className="animate-spin" />} 匯入 Excel</button>
-                      <button onClick={() => { handleExportToExcel(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 ${!isXlsxLoaded ? 'opacity-50 cursor-not-allowed' : 'text-[#3A3A3A]'}`} disabled={!isXlsxLoaded}>{isXlsxLoaded ? <Download size={16} /> : <Loader2 size={16} className="animate-spin" />} 匯出 Excel</button>
-                      <button onClick={() => { handleExportToPDF(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 text-[#3A3A3A]`}><Printer size={16} /> 匯出 PDF / 列印</button>
+                    <div className={`absolute right-0 top-full mt-2 w-64 ${cardBg} rounded-xl shadow-xl border ${borderColor} p-2 flex flex-col gap-1 z-50 animate-in fade-in zoom-in-95 duration-200`}>
+                      <div className={`px-4 py-2 text-xs font-bold ${subTextColor} uppercase tracking-wider border-b ${borderColor} mb-1 flex justify-between items-center`}><span>雲端契約 (Google)</span>{googleUser && <span className="text-[10px] text-green-600 flex items-center gap-1"><CheckCircle2 size={10}/> 已簽署</span>}</div>
+                      <button onClick={() => { handleSaveToGoogleSheet(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 ${textColor}`} disabled={isSyncing}>{isSyncing ? <Loader2 size={16} className={`animate-spin ${textColor}`}/> : <RefreshCw size={16} className={theme.primary}/>} {isSyncing ? "同步中..." : "立即手動同步"}</button>
+                      <button onClick={() => { setIsFileMenuOpen(false); setIsCloudLoadModalOpen(true); fetchCloudFiles(); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 ${textColor}`}><CloudDownload size={16} className={theme.primary}/> 讀取雲端檔案</button>
+                      <div className={`my-1 border-b ${borderColor}`}></div>
+                      <div className={`px-4 py-2 text-xs font-bold ${subTextColor} uppercase tracking-wider`}>本機檔案</div>
+                      <button onClick={() => { fileInputRef.current.click(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 ${!isXlsxLoaded ? 'opacity-50 cursor-not-allowed' : textColor}`} disabled={!isXlsxLoaded}>{isXlsxLoaded ? <Upload size={16} /> : <Loader2 size={16} className="animate-spin" />} 匯入 Excel</button>
+                      <button onClick={() => { handleExportToExcel(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 ${!isXlsxLoaded ? 'opacity-50 cursor-not-allowed' : textColor}`} disabled={!isXlsxLoaded}>{isXlsxLoaded ? <Download size={16} /> : <Loader2 size={16} className="animate-spin" />} 匯出 Excel</button>
+                      <button onClick={() => { handleExportToPDF(); setIsFileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-lg hover:${theme.hover} text-sm font-bold flex items-center gap-3 ${textColor}`}><Printer size={16} /> 匯出 PDF / 列印</button>
                     </div>
                   </>
                 )}
@@ -1525,7 +1467,8 @@ const TripPlanner = ({
                   onClick={() => setActiveDay(idx)} 
                   onDragOver={(e) => e.preventDefault()} 
                   onDrop={(e) => handleDayDrop(e, idx)}
-                  className={`flex flex-col items-center justify-center min-w-[4.5rem] py-2 px-1 rounded-xl transition-all border ${activeDay === idx ? `bg-[#3A3A3A] text-[#F9F8F6] border-[#3A3A3A] shadow-md transform scale-105` : `${theme.card} ${theme.subText} ${theme.border}`}`}
+                  className={`flex flex-col items-center justify-center min-w-[4.5rem] py-2 px-1 rounded-xl transition-all border ${activeDay === idx ? `bg-[#2E7D32] text-white border-[#2E7D32] shadow-md transform scale-105` : `${cardBg} ${subTextColor} ${borderColor}`}`}
+                  style={activeDay === idx ? { backgroundColor: theme.primaryHex, borderColor: theme.primaryHex } : {}}
                 >
                   <span className="text-[10px] font-bold tracking-wider">Day {idx + 1}</span>
                   <span className="text-sm font-serif font-medium mt-0.5">{formatDate(tripSettings.startDate, idx).text}</span>
@@ -1534,48 +1477,47 @@ const TripPlanner = ({
             </div>
           )}
           {viewMode === 'checklist' && (
-            <div className="mt-6 flex bg-[#EBE9E4] p-1 rounded-xl">
+            <div className={`mt-6 flex ${theme.isDark ? 'bg-black/20' : 'bg-[#EBE9E4]'} p-1 rounded-xl`}>
               {[{id:'packing',label:'行李',icon:Luggage},{id:'shopping',label:'購物',icon:ShoppingBag},{id:'sightseeing',label:'景點',icon:Camera},{id:'food',label:'美食',icon:Utensils}].map(tab => (
-                <button key={tab.id} onClick={() => setChecklistTab(tab.id)} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${checklistTab === tab.id ? `${theme.card} text-[#3A3A3A] shadow-sm` : `${theme.subText} hover:${theme.primary}`}`}><tab.icon size={14} />{tab.label}</button>
+                <button key={tab.id} onClick={() => setChecklistTab(tab.id)} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${checklistTab === tab.id ? `${cardBg} ${textColor} shadow-sm` : `${subTextColor} hover:${theme.primary}`}`}><tab.icon size={14} />{tab.label}</button>
               ))}
             </div>
           )}
           {viewMode === 'statistics' && (
-            <div className="mt-6 flex bg-[#EBE9E4] p-1 rounded-xl">
-              <button onClick={() => { setStatsMode('real'); setStatsPersonFilter('all'); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${statsMode === 'real' ? `${theme.card} text-[#3A3A3A] shadow-sm` : theme.subText}`}>真實支付</button>
-              <button onClick={() => { setStatsMode('personal'); setStatsPersonFilter('all'); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${statsMode === 'personal' ? `${theme.card} text-[#3A3A3A] shadow-sm` : theme.subText}`}>個人消費</button>
+            <div className={`mt-6 flex ${theme.isDark ? 'bg-black/20' : 'bg-[#EBE9E4]'} p-1 rounded-xl`}>
+              <button onClick={() => { setStatsMode('real'); setStatsPersonFilter('all'); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${statsMode === 'real' ? `${cardBg} ${textColor} shadow-sm` : subTextColor}`}>真實支付</button>
+              <button onClick={() => { setStatsMode('personal'); setStatsPersonFilter('all'); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${statsMode === 'personal' ? `${cardBg} ${textColor} shadow-sm` : subTextColor}`}>個人消費</button>
             </div>
           )}
           {viewMode === 'categoryManager' && (
-             <div className="mt-6 flex bg-[#EBE9E4] p-1 rounded-xl">
-               <button onClick={() => setCategoryManagerTab('itinerary')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${categoryManagerTab === 'itinerary' ? `${theme.card} text-[#3A3A3A] shadow-sm` : `${theme.subText} hover:${theme.primary}`}`}><Camera size={14} />行程圖示</button>
-               <button onClick={() => setCategoryManagerTab('expenses')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${categoryManagerTab === 'expenses' ? `${theme.card} text-[#3A3A3A] shadow-sm` : `${theme.subText} hover:${theme.primary}`}`}><Coins size={14} />費用類別</button>
+             <div className={`mt-6 flex ${theme.isDark ? 'bg-black/20' : 'bg-[#EBE9E4]'} p-1 rounded-xl`}>
+               <button onClick={() => setCategoryManagerTab('itinerary')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${categoryManagerTab === 'itinerary' ? `${cardBg} ${textColor} shadow-sm` : `${subTextColor} hover:${theme.primary}`}`}><Camera size={14} />行程圖示</button>
+               <button onClick={() => setCategoryManagerTab('expenses')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${categoryManagerTab === 'expenses' ? `${cardBg} ${textColor} shadow-sm` : `${subTextColor} hover:${theme.primary}`}`}><Coins size={14} />費用類別</button>
              </div>
           )}
         </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-6 pb-24 md:px-6">
-        {/* Same Main Content */}
         {viewMode === 'categoryManager' ? (
           <div className="space-y-4 animate-in fade-in duration-300">
              <div className="flex justify-between items-center mb-2">
-                <h2 className="text-lg font-bold text-[#3A3A3A]">管理類別</h2>
+                <h2 className={`text-lg font-bold ${textColor}`}>管理類別</h2>
                 <button onClick={() => openCategoryEditModal()} className={`flex items-center gap-1 text-xs font-bold px-3 py-2 rounded-lg ${theme.primaryBg} text-white shadow hover:opacity-90 transition-all`}><Plus size={14}/> 新增類別</button>
              </div>
              <div className="space-y-2">
                 {(categoryManagerTab === 'itinerary' ? itineraryCategories : expenseCategories).map((cat, index) => {
                   const CatIcon = getIconComponent(cat.icon);
                   return (
-                    <div key={cat.id} className={`draggable-item ${theme.card} border ${theme.border} p-4 rounded-xl flex items-center justify-between shadow-sm`} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd} onDragOver={(e) => e.preventDefault()}>
+                    <div key={cat.id} className={`draggable-item ${cardBg} border ${borderColor} p-4 rounded-xl flex items-center justify-between shadow-sm`} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd} onDragOver={(e) => e.preventDefault()}>
                         <div className="flex items-center gap-4">
                           <div className="text-[#CCC] cursor-grab active:cursor-grabbing"><GripVertical size={20} /></div>
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${cat.color || theme.hover} ${theme.primary} border border-[#F0F0F0]`}><CatIcon size={20} /></div>
-                          <div><div className="text-sm font-bold text-[#3A3A3A]">{cat.label}</div><div className="text-[10px] text-[#999] font-mono">ID: {cat.id}</div></div>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${cat.color || theme.hover} ${theme.primary} border border-current opacity-90`}><CatIcon size={20} /></div>
+                          <div><div className={`text-sm font-bold ${textColor}`}>{cat.label}</div><div className="text-[10px] text-[#999] font-mono">ID: {cat.id}</div></div>
                         </div>
                         <div className="flex gap-2">
-                          <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); openCategoryEditModal(cat); }} className={`p-2 text-[#888] hover:${theme.primary} ${theme.hover} rounded-lg transition-colors`}><Edit3 size={18} /></button>
-                          <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat.id); }} className={`p-2 text-[#888] hover:${theme.danger} hover:${theme.dangerBg} rounded-lg transition-colors`}><Trash2 size={18} /></button>
+                          <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); openCategoryEditModal(cat); }} className={`p-2 ${subTextColor} hover:${theme.primary} ${theme.hover} rounded-lg transition-colors`}><Edit3 size={18} /></button>
+                          <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat.id); }} className={`p-2 ${subTextColor} hover:${theme.danger} hover:${theme.dangerBg} rounded-lg transition-colors`}><Trash2 size={18} /></button>
                         </div>
                     </div>
                   );
@@ -1610,7 +1552,7 @@ const TripPlanner = ({
                 {(statsDayFilter !== 'all' || statsCategoryFilter !== 'all' || statsPersonFilter !== 'all') && (
                     <button 
                         onClick={() => { setStatsDayFilter('all'); setStatsCategoryFilter('all'); setStatsPersonFilter('all'); }}
-                        className={`flex items-center gap-1 px-3 py-2 bg-[#F2F0EB] text-[#888] rounded-lg text-xs font-bold hover:bg-[#EBE9E4] hover:text-[#C55A5A] transition-colors`}
+                        className={`flex items-center gap-1 px-3 py-2 ${theme.isDark ? 'bg-white/10' : 'bg-[#F2F0EB]'} ${subTextColor} rounded-lg text-xs font-bold hover:bg-[#EBE9E4] hover:${theme.danger} transition-colors`}
                     >
                         <FilterX size={14} /> 
                         <span className="hidden sm:inline">清除篩選</span>
@@ -1620,7 +1562,7 @@ const TripPlanner = ({
 
             <div className="overflow-x-auto pb-2 scrollbar-hide -mx-2 px-2">
               <div className="flex gap-3 min-w-max">
-                <div onClick={() => setStatsPersonFilter('all')} className={`border rounded-xl p-3 shadow-sm min-w-[4rem] flex flex-col items-center justify-center cursor-pointer transition-all ${statsPersonFilter === 'all' ? 'bg-[#3A3A3A] border-[#3A3A3A] text-white' : `${theme.card} ${theme.border} text-[#3A3A3A] ${theme.hover}`}`}>
+                <div onClick={() => setStatsPersonFilter('all')} className={`border rounded-xl p-3 shadow-sm min-w-[4rem] flex flex-col items-center justify-center cursor-pointer transition-all ${statsPersonFilter === 'all' ? `${theme.primaryBg} ${theme.primaryBorder} text-white` : `${cardBg} ${borderColor} ${textColor} ${theme.hover}`}`}>
                    <div className="text-xs font-bold mb-1">ALL</div><Users size={16} />
                 </div>
                 {companions.map((person, idx) => {
@@ -1628,58 +1570,58 @@ const TripPlanner = ({
                   const amountForeign = statsMode === 'real' ? stat.paid : stat.share;
                   const amountTWD = amountForeign * currencySettings.exchangeRate;
                   return (
-                    <div key={person} onClick={() => setStatsPersonFilter(statsPersonFilter === person ? 'all' : person)} className={`border rounded-xl p-3 shadow-sm min-w-[8rem] flex flex-col items-center cursor-pointer transition-all ${statsPersonFilter === person ? `${theme.hover} ${theme.primaryBorder} ring-1 ring-[#5F6F52]` : `${theme.card} ${theme.border} ${theme.hover}`}`}>
+                    <div key={person} onClick={() => setStatsPersonFilter(statsPersonFilter === person ? 'all' : person)} className={`border rounded-xl p-3 shadow-sm min-w-[8rem] flex flex-col items-center cursor-pointer transition-all ${statsPersonFilter === person ? `${theme.hover} ${theme.primaryBorder} ring-1 ring-current` : `${cardBg} ${borderColor} ${theme.hover}`}`}>
                        <div className={`w-10 h-10 rounded-full ${getAvatarColor(idx)} flex items-center justify-center text-white text-sm font-bold font-serif mb-2`}>{person.charAt(0).toUpperCase()}</div>
-                       <div className="text-xs font-bold text-[#3A3A3A] mb-1">{person}</div>
+                       <div className={`text-xs font-bold ${textColor} mb-1`}>{person}</div>
                        <div className={`text-sm font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.symbol} {formatMoney(amountForeign)}</div>
-                       <div className="text-[9px] text-[#999] font-medium mt-0.5">(NT$ {formatMoney(amountTWD)})</div>
+                       <div className={`text-[9px] ${subTextColor} font-medium mt-0.5`}>(NT$ {formatMoney(amountTWD)})</div>
                     </div>
                   )
                 })}
               </div>
             </div>
 
-            <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
-              <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2"><ArrowLeftRight size={16}/> 結算建議 (依篩選)</h3>
+            <div className={`${cardBg} rounded-2xl p-5 border ${borderColor} shadow-sm`}>
+              <h3 className={`text-sm font-bold ${subTextColor} mb-4 flex items-center gap-2`}><ArrowLeftRight size={16}/> 結算建議 (依篩選)</h3>
               <div className="space-y-3">
                 {statisticsData.transactions.length > 0 ? (
                   statisticsData.transactions.map((tx, i) => {
                       const amountTWD = tx.amount * currencySettings.exchangeRate;
                       return (
-                      <div key={i} className={`flex items-center justify-between text-sm border-b ${theme.border} pb-3 last:border-0`}>
+                      <div key={i} className={`flex items-center justify-between text-sm border-b ${borderColor} pb-3 last:border-0`}>
                           <div className="flex items-center gap-2 flex-1">
-                            <div className="flex items-center gap-1.5 bg-[#F9F9F9] pl-1 pr-2 py-1 rounded-full border border-[#EEE]">
+                            <div className={`flex items-center gap-1.5 ${theme.isDark ? 'bg-white/10' : 'bg-[#F9F9F9]'} pl-1 pr-2 py-1 rounded-full border border-[#EEE]`}>
                                 <PayerAvatar name={tx.from} companions={companions} theme={theme} size="w-5 h-5"/>
-                                <span className="font-bold text-[#3A3A3A] text-xs">{tx.from}</span>
+                                <span className={`font-bold ${textColor} text-xs`}>{tx.from}</span>
                             </div>
                             <ArrowRight size={14} className="text-[#CCC]" />
-                            <div className="flex items-center gap-1.5 bg-[#F9F9F9] pl-1 pr-2 py-1 rounded-full border border-[#EEE]">
+                            <div className={`flex items-center gap-1.5 ${theme.isDark ? 'bg-white/10' : 'bg-[#F9F9F9]'} pl-1 pr-2 py-1 rounded-full border border-[#EEE]`}>
                                 <PayerAvatar name={tx.to} companions={companions} theme={theme} size="w-5 h-5"/>
-                                <span className="font-bold text-[#3A3A3A] text-xs">{tx.to}</span>
+                                <span className={`font-bold ${textColor} text-xs`}>{tx.to}</span>
                             </div>
                           </div>
                           <div className="text-right">
                             <div className={`font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(tx.amount)}</div>
-                            <div className="text-[10px] text-[#999] font-medium">(NT$ {formatMoney(amountTWD)})</div>
+                            <div className={`text-[10px] ${subTextColor} font-medium`}>(NT$ {formatMoney(amountTWD)})</div>
                           </div>
                       </div>
                   )})
-                ) : ( <div className="text-center text-[#888] text-xs py-2">已結清</div> )}
+                ) : ( <div className={`text-center ${subTextColor} text-xs py-2`}>已結清</div> )}
               </div>
             </div>
 
             {statisticsData.sortedDailyTotals.length > 0 && (
-                <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
-                    <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2"><Calendar size={16}/> 每日消費明細</h3>
+                <div className={`${cardBg} rounded-2xl p-5 border ${borderColor} shadow-sm`}>
+                    <h3 className={`text-sm font-bold ${subTextColor} mb-4 flex items-center gap-2`}><Calendar size={16}/> 每日消費明細</h3>
                     <div className="space-y-2">
                         {statisticsData.sortedDailyTotals.map(({ date, total }) => {
                             const totalTWD = total * currencySettings.exchangeRate;
                             return (
-                            <div key={date} className={`flex justify-between items-center text-sm py-2 border-b ${theme.border} last:border-0`}>
-                                <div className="text-[#3A3A3A] font-serif">{date}</div>
+                            <div key={date} className={`flex justify-between items-center text-sm py-2 border-b ${borderColor} last:border-0`}>
+                                <div className={`${textColor} font-serif`}>{date}</div>
                                 <div className="text-right">
                                     <div className={`font-bold ${theme.accent} font-serif`}>{currencySettings.selectedCountry.currency} {formatMoney(total)}</div>
-                                    <div className="text-[10px] text-[#999] font-medium">(NT$ {formatMoney(totalTWD)})</div>
+                                    <div className={`text-[10px] ${subTextColor} font-medium`}>(NT$ {formatMoney(totalTWD)})</div>
                                 </div>
                             </div>
                         )})}
@@ -1688,8 +1630,8 @@ const TripPlanner = ({
             )}
 
             {categoryChartData.length > 0 && (
-                <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
-                    <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2"><PieChart size={16}/> 類別消費統計</h3>
+                <div className={`${cardBg} rounded-2xl p-5 border ${borderColor} shadow-sm`}>
+                    <h3 className={`text-sm font-bold ${subTextColor} mb-4 flex items-center gap-2`}><PieChart size={16}/> 類別消費統計</h3>
                     <div className="space-y-3">
                         {categoryChartData.map(cat => {
                             const Icon = getIconComponent(cat.icon);
@@ -1702,10 +1644,10 @@ const TripPlanner = ({
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between mb-1.5">
-                                            <span className="font-bold text-[#3A3A3A]">{cat.label}</span>
+                                            <span className={`font-bold ${textColor}`}>{cat.label}</span>
                                             <div className="text-right">
                                                 <span className={`font-serif font-bold ${theme.primary}`}>{currencySettings.selectedCountry.symbol} {formatMoney(cat.amount)}</span>
-                                                <span className="text-[9px] text-[#999] font-medium ml-1">(NT$ {formatMoney(amountTWD)})</span>
+                                                <span className={`text-[9px] ${subTextColor} font-medium ml-1`}>(NT$ {formatMoney(amountTWD)})</span>
                                             </div>
                                         </div>
                                         <div className="h-2 w-full bg-[#F0F0F0] rounded-full overflow-hidden">
@@ -1719,8 +1661,8 @@ const TripPlanner = ({
                 </div>
             )}
 
-            <div className={`${theme.card} rounded-2xl p-5 border ${theme.border} shadow-sm`}>
-              <h3 className="text-sm font-bold text-[#888] mb-4 flex items-center gap-2">
+            <div className={`${cardBg} rounded-2xl p-5 border ${borderColor} shadow-sm`}>
+              <h3 className={`text-sm font-bold ${subTextColor} mb-4 flex items-center gap-2`}>
                 <List size={16} /> 詳細清單
               </h3>
               <div className="space-y-0">
@@ -1730,24 +1672,24 @@ const TripPlanner = ({
           </div>
         ) : (
           <div className="space-y-3 relative">
-            {viewMode === 'itinerary' && <div className={`absolute left-[4.5rem] top-4 bottom-4 w-px ${theme.border} -z-10`}></div>}
+            {viewMode === 'itinerary' && <div className={`absolute left-[4.5rem] top-4 bottom-4 w-px ${borderColor} -z-10`}></div>}
             {(viewMode === 'checklist' && (checklistTab === 'shopping' || checklistTab === 'food' || checklistTab === 'sightseeing')) ? (
                 Object.entries(groupListByRegion(getCurrentList())).map(([region, items]) => (
                     <div key={region} className="animate-in fade-in">
-                        <div className={`sticky top-0 z-10 ${theme.bg}/95 backdrop-blur-sm py-2 px-1 mb-2 mt-4 border-b ${theme.border} flex items-center gap-2 first:mt-0`}>
+                        <div className={`sticky top-0 z-10 ${theme.bg}/95 backdrop-blur-sm py-2 px-1 mb-2 mt-4 border-b ${borderColor} flex items-center gap-2 first:mt-0`}>
                             <MapIcon size={16} className={theme.primary} />
                             <span className={`text-lg font-bold ${theme.primary} font-serif`}>{region}</span>
                         </div>
                         <div className="space-y-3">
                             {items.map((item, index) => (
                                 <div key={item.id} className="draggable-item group relative" draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd}>
-                                    <div onClick={() => toggleComplete(item.id)} className={`${theme.card} rounded-xl p-4 border ${theme.border} shadow-sm transition-all flex gap-4 items-start cursor-pointer ${item.completed ? 'opacity-50 grayscale' : ''}`}>
-                                        <div className={`mt-1 w-5 h-5 rounded border flex items-center justify-center transition-all shrink-0 ${item.completed ? `${theme.primaryBg} ${theme.primaryBorder} text-white` : `bg-white ${theme.border} text-transparent hover:${theme.primaryBorder}`}`}><Check size={12} strokeWidth={3} /></div>
+                                    <div onClick={() => toggleComplete(item.id)} className={`${cardBg} rounded-xl p-4 border ${borderColor} shadow-sm transition-all flex gap-4 items-start cursor-pointer ${item.completed ? 'opacity-50 grayscale' : ''}`}>
+                                        <div className={`mt-1 w-5 h-5 rounded border flex items-center justify-center transition-all shrink-0 ${item.completed ? `${theme.primaryBg} ${theme.primaryBorder} text-white` : `${theme.isDark ? 'bg-black/30' : 'bg-white'} ${borderColor} text-transparent hover:${theme.primaryBorder}`}`}><Check size={12} strokeWidth={3} /></div>
                                         <div className="flex-1 min-w-0">
                                             <div className="flex justify-between items-start gap-2">
                                                 <div className="flex items-center gap-2 flex-wrap">
-                                                    <h3 className={`text-xl font-bold font-serif leading-tight hover:${theme.primary} transition-colors ${item.completed ? 'text-[#AAA] line-through' : 'text-[#3A3A3A]'}`} onClick={(e) => { e.stopPropagation(); openEditModal(item); }}>{item.title}</h3>
-                                                    {item.image && <a href={item.image.link} target="_blank" className="text-[#888] hover:text-[#5F6F52] transition-colors" title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}
+                                                    <h3 className={`text-xl font-bold font-serif leading-tight hover:${theme.primary} transition-colors ${item.completed ? 'text-[#AAA] line-through' : textColor}`} onClick={(e) => { e.stopPropagation(); openEditModal(item); }}>{item.title}</h3>
+                                                    {item.image && <a href={item.image.link} target="_blank" className={`${subTextColor} hover:text-[#5F6F52] transition-colors`} title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}
                                                     <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.title, item.id + '_title'); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder} opacity-0 group-hover:opacity-100 transition-opacity shrink-0`} title="複製標題">{copiedId === (item.id + '_title') ? <Check size={12} className={theme.primary} /> : <Copy size={12} />}</button>
                                                 </div>
                                                 {item.cost > 0 && !item.completed && (<div className="text-right shrink-0"><div className={`text-sm font-bold ${theme.accent}`}>{currencySettings.selectedCountry.symbol} {formatMoney(item.cost)}</div></div>)}
@@ -1756,7 +1698,7 @@ const TripPlanner = ({
                                                 {item.location && (
                                                     <div className={`flex items-center gap-1 group/location -ml-1.5 px-1.5 py-0.5 rounded ${theme.hover} transition-colors w-fit`}>
                                                         <MapPin size={12} className={theme.accent} />
-                                                        <span className="text-xs text-[#666666]">{item.location}</span>
+                                                        <span className={`text-xs ${subTextColor}`}>{item.location}</span>
                                                         <div className="flex gap-2 ml-1 opacity-0 group-hover/location:opacity-100 transition-opacity">
                                                             <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.location, item.id); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder}`} title="複製地址">
                                                                 {copiedId === item.id ? <Check size={14} className={theme.primary} /> : <Copy size={14} />}
@@ -1770,12 +1712,12 @@ const TripPlanner = ({
                                                 {item.website && (
                                                   <div className={`flex items-center gap-1 group/website -ml-1.5 px-1.5 py-0.5 rounded ${theme.hover} transition-colors w-fit`}>
                                                       <Globe size={12} className={theme.accent} />
-                                                      <a href={item.website} target="_blank" rel="noreferrer" className="text-xs text-[#666666] hover:underline" onClick={e => e.stopPropagation()}>
+                                                      <a href={item.website} target="_blank" rel="noreferrer" className={`text-xs ${subTextColor} hover:underline`} onClick={e => e.stopPropagation()}>
                                                         網站連結
                                                       </a>
                                                   </div>
                                                 )}
-                                                {item.notes && <div className={`text-[10px] text-[#888] ${theme.hover} p-1.5 rounded inline-block flex items-center gap-1 whitespace-pre-wrap`}><Tag size={10} className={theme.accent}/> {item.notes}</div>}
+                                                {item.notes && <div className={`text-[10px] ${subTextColor} ${theme.hover} p-1.5 rounded inline-block flex items-center gap-1 whitespace-pre-wrap`}><Tag size={10} className={theme.accent}/> {item.notes}</div>}
                                             </div>
                                         </div>
                                         <button onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} className={`text-[#999] hover:${theme.danger} opacity-0 group-hover:opacity-100 p-1`}><Trash2 size={20} /></button>
@@ -1809,31 +1751,31 @@ const TripPlanner = ({
                 let groupHeader = null;
                 const prevItem = getCurrentList()[index - 1];
                 if (index === 0 || (item.region || '未分類') !== (prevItem?.region || '未分類')) {
-                   groupHeader = (<div className={`sticky top-0 z-10 ${theme.bg}/95 backdrop-blur-sm py-3 px-1 mb-2 border-b ${theme.border} text-lg font-bold ${theme.primary} flex items-center gap-2 animate-in fade-in mt-6 first:mt-0`}><MapIcon size={18} /> {item.region || '未分類'}</div>);
+                   groupHeader = (<div className={`sticky top-0 z-10 ${theme.bg}/95 backdrop-blur-sm py-3 px-1 mb-2 border-b ${borderColor} text-lg font-bold ${theme.primary} flex items-center gap-2 animate-in fade-in mt-6 first:mt-0`}><MapIcon size={18} /> {item.region || '未分類'}</div>);
                 }
                 const payerDisplay = item.details && item.details.length > 0 ? [...new Set(item.details.map(d => d.payer === 'EACH' ? '各付' : d.payer))].join(' | ') : item.payer;
                 return (
                   <React.Fragment key={item.id}>
                     {groupHeader}
-                    <div className={`draggable-item group ${theme.card} rounded-xl p-4 border ${theme.border} shadow-sm flex gap-4 items-start relative hover:shadow-md transition-all`} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd} onDragOver={(e) => e.preventDefault()}>
-                      <div className={`w-10 h-10 rounded-full ${theme.hover} flex items-center justify-center ${theme.primary} shrink-0 mt-1`}><Icon size={20} /></div>
+                    <div className={`draggable-item group ${cardBg} rounded-xl p-4 border ${borderColor} shadow-sm flex gap-4 items-start relative hover:shadow-md transition-all`} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd} onDragOver={(e) => e.preventDefault()}>
+                      <div className={`w-10 h-10 rounded-full ${theme.hover} flex items-center justify-center ${theme.primary} shrink-0 mt-1 text-white`}><Icon size={20} /></div>
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start mb-2">
-                           <h3 className="text-xl font-bold text-[#3A3A3A] font-serif leading-tight pr-2 flex items-center flex-wrap gap-2">
+                           <h3 className={`text-xl font-bold ${textColor} font-serif leading-tight pr-2 flex items-center flex-wrap gap-2`}>
                              <span>{item.title}</span>
-                             {item.image && <a href={item.image.link} target="_blank" className="text-[#888] hover:text-[#5F6F52] transition-colors" title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}
+                             {item.image && <a href={item.image.link} target="_blank" className={`${subTextColor} hover:text-[#5F6F52] transition-colors`} title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}
                              <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.title, item.id + '_title'); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder} opacity-0 group-hover:opacity-100 transition-opacity shrink-0`} title="複製標題">{copiedId === (item.id + '_title') ? <Check size={12} className={theme.primary} /> : <Copy size={12} />}</button>
                            </h3>
                            <div className="flex gap-2 shrink-0"><button onClick={() => { setEditingItem(item); openEditModal(item); }} className={`text-[#999] hover:${theme.primary} p-1`}><Edit3 size={16}/></button><button onClick={() => handleDeleteItem(item.id)} className={`text-[#999] hover:${theme.danger} p-1`}><Trash2 size={16}/></button></div>
                         </div>
-                        <div className="text-xs text-[#888] mb-2 flex items-center gap-2"><Calendar size={12} className={theme.accent}/><span>{item.date}</span><span>•</span><span className={`${theme.accent} font-bold`}>{payerDisplay} ● 支付</span></div>
+                        <div className={`text-xs ${subTextColor} mb-2 flex items-center gap-2`}><Calendar size={12} className={theme.accent}/><span>{item.date}</span><span>•</span><span className={`${theme.accent} font-bold`}>{payerDisplay} ● 支付</span></div>
                         <div className="flex justify-between items-end"><div className={`text-[10px] text-[#666] ${theme.bg} px-2 py-1.5 rounded flex flex-wrap items-center gap-x-2 gap-y-1`}><span className="font-bold">分攤:</span>{item.shares && item.shares.map((share, idx) => (<React.Fragment key={share}><div className="flex items-center gap-1"><PayerAvatar name={share} companions={companions} theme={theme} size="w-3 h-3" /><span>{share}</span></div>{idx < item.shares.length - 1 && <span className="text-[#CCC]">|</span>}</React.Fragment>))}</div>
                         <div className="text-right shrink-0 ml-2">
                             <div className={`text-sm font-serif font-bold ${theme.accent}`}>{mainAmount}</div>
-                            <div className="text-[10px] text-[#999] font-medium">{subAmount}</div>
+                            <div className={`text-[10px] ${subTextColor} font-medium`}>{subAmount}</div>
                         </div>
                         </div>
-                        {item.notes && <div className={`mt-2 pt-2 border-t ${theme.border} flex gap-2 items-start`}><PenTool size={10} className="mt-0.5 text-[#AAA] shrink-0" /><p className="text-xs text-[#777] leading-relaxed font-serif italic whitespace-pre-wrap">{item.notes}</p></div>}
+                        {item.notes && <div className={`mt-2 pt-2 border-t ${borderColor} flex gap-2 items-start`}><PenTool size={10} className="mt-0.5 text-[#AAA] shrink-0" /><p className={`text-xs ${theme.isDark ? 'text-gray-400' : 'text-[#777]'} leading-relaxed font-serif italic whitespace-pre-wrap`}>{item.notes}</p></div>}
                       </div>
                     </div>
                   </React.Fragment>
@@ -1851,24 +1793,24 @@ const TripPlanner = ({
                   const diff = timeToMinutes(nextItem.time) - (timeToMinutes(item.time) + item.duration);
                   
                   if (diff !== 0 && !item.isShadow && !nextItem.isShadow) { 
-                      gapComp = (<div className="pl-[4.5rem] py-3 flex items-center select-none"><div className={`text-[10px] px-3 py-0.5 rounded-full border flex items-center gap-1.5 font-medium ${diff < 0 ? `${theme.danger} ${theme.dangerBg} border-[#FFD6D6]` : `${theme.subText} ${theme.hover} ${theme.border}`}`}><span className="opacity-50">▼</span> {diff < 0 ? '時間重疊' : `移動: ${formatDurationDisplay(diff)}`}</div></div>); 
+                      gapComp = (<div className="pl-[4.5rem] py-3 flex items-center select-none"><div className={`text-[10px] px-3 py-0.5 rounded-full border flex items-center gap-1.5 font-medium ${diff < 0 ? `${theme.danger} ${theme.dangerBg} border-[#FFD6D6]` : `${subTextColor} ${theme.hover} ${borderColor}`}`}><span className="opacity-50">▼</span> {diff < 0 ? '時間重疊' : `移動: ${formatDurationDisplay(diff)}`}</div></div>); 
                   }
                 }
 
                 const isShadow = item.isShadow;
                 const cardStyle = isShadow 
                     ? `bg-orange-50/50 border-l-4 border-orange-300 shadow-sm opacity-90` 
-                    : `${theme.card} border ${theme.border} shadow-[0_2px_10px_-6px_rgba(0,0,0,0.05)] hover:shadow-md hover:border-[#D6D2C4] hover:translate-x-0.5`;
+                    : `${cardBg} border ${borderColor} shadow-[0_2px_10px_-6px_rgba(0,0,0,0.05)] hover:shadow-md hover:border-[#FFB300] hover:translate-x-0.5`;
 
                 return (
                   <React.Fragment key={item.id}>
                     <div className="draggable-item group relative flex items-start gap-4 py-2" draggable={!isShadow} onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd} onDragOver={(e) => e.preventDefault()}>
                       <div className="w-[3.5rem] text-right pt-2 shrink-0 select-none">
-                          <div className={`text-xl font-bold font-serif tracking-tight leading-none ${isShadow ? 'text-orange-400' : 'text-[#3A3A3A]'}`}>{item.time}</div>
-                          <div className="text-[10px] text-[#999999] font-medium mt-1">{endTimeStr}</div>
+                          <div className={`text-xl font-bold font-serif tracking-tight leading-none ${isShadow ? 'text-orange-400' : textColor}`}>{item.time}</div>
+                          <div className={`text-[10px] ${subTextColor} font-medium mt-1`}>{endTimeStr}</div>
                       </div>
                       <div className="relative pt-2 shrink-0 flex justify-center w-8">
-                          <div className={`w-3 h-3 rounded-full border-2 shadow-sm z-10 ${isShadow ? 'border-orange-300 bg-orange-100' : `${theme.border} ${theme.primaryBg}`}`}></div>
+                          <div className={`w-3 h-3 rounded-full border-2 shadow-sm z-10 ${isShadow ? 'border-orange-300 bg-orange-100' : `${borderColor} ${theme.primaryBg}`}`}></div>
                       </div>
                       <div className="flex-1 min-w-0 group/card">
                         <div className={`rounded-lg p-5 transition-all relative ${cardStyle}`}>
@@ -1876,10 +1818,10 @@ const TripPlanner = ({
                           
                           <div className="flex justify-between items-start mb-2 pl-2">
                             <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isShadow ? 'bg-orange-100 text-orange-500' : `${categoryDef.color || theme.hover} ${theme.primary}`}`}>
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isShadow ? 'bg-orange-100 text-orange-500' : `${categoryDef.color || theme.hover} ${theme.primary} border border-current opacity-90`}`}>
                                     {isShadow ? <ArrowDownCircle size={20} /> : <Icon size={20} strokeWidth={1.5} />}
                                 </div>
-                                <span className={`text-xs font-bold tracking-widest uppercase border px-1.5 py-0.5 rounded-sm ${isShadow ? 'text-orange-400 border-orange-200' : 'text-[#999999] border-[#EBE9E4]'}`}>
+                                <span className={`text-xs font-bold tracking-widest uppercase border px-1.5 py-0.5 rounded-sm ${isShadow ? 'text-orange-400 border-orange-200' : `${subTextColor} ${theme.isDark ? 'border-gray-600' : 'border-[#EBE9E4]'}`}`}>
                                     {isShadow ? `Day ${item.originalDayIdx + 1} 延續` : categoryDef.label}
                                 </span>
                             </div>
@@ -1901,9 +1843,9 @@ const TripPlanner = ({
                           <div className="pl-2">
                             <div className="flex justify-between items-start gap-2 mb-2">
                                 <div className="flex-1">
-                                    <h3 className={`text-xl font-bold font-serif leading-tight flex items-center flex-wrap gap-2 ${isShadow ? 'text-slate-600' : 'text-[#3A3A3A]'}`}>
+                                    <h3 className={`text-xl font-bold font-serif leading-tight flex items-center flex-wrap gap-2 ${isShadow ? 'text-slate-600' : textColor}`}>
                                         <span>{item.title}</span>
-                                        {item.image && !isShadow && <a href={item.image.link} target="_blank" className="text-[#888] hover:text-[#5F6F52] transition-colors" title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}
+                                        {item.image && !isShadow && <a href={item.image.link} target="_blank" className={`${subTextColor} hover:text-[#5F6F52] transition-colors`} title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}
                                         {!isShadow && <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.title, item.id + '_title'); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder} opacity-0 group-hover/card:opacity-100 transition-opacity shrink-0`} title="複製標題">{copiedId === (item.id + '_title') ? <Check size={12} className={theme.primary} /> : <Copy size={12} />}</button>}
                                         {item.website && !isShadow && <a href={item.website} target="_blank" rel="noreferrer" className={`text-[#888] hover:${theme.accent}`} onClick={e => e.stopPropagation()}><Globe size={14} /></a>}
                                     </h3>
@@ -1912,13 +1854,13 @@ const TripPlanner = ({
                             </div>
                             
                             {!isShadow && (
-                                <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-[#666666]">
+                                <div className={`flex flex-wrap gap-x-4 gap-y-2 text-xs ${subTextColor}`}>
                                     {item.location && (<div className={`flex items-center gap-1 group/location -ml-1.5 px-1.5 py-0.5 rounded ${theme.hover} transition-colors`}><MapPin size={12} className={theme.accent} /><span>{item.location}</span><div className="flex gap-2 ml-1 opacity-0 group-hover/location:opacity-100 transition-opacity"><button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.location, item.id); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder}`}>{copiedId === item.id ? <Check size={14} className={theme.primary} /> : <Copy size={14} />}</button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.location)}`} target="_blank" rel="noreferrer" className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder}`} onClick={(e) => e.stopPropagation()}><Navigation size={14} /></a></div></div>)}
                                     <div className="flex items-center gap-1 px-1.5 py-0.5"><Clock size={12} className={theme.accent} /> 停留: {formatDurationDisplay(item.duration)}</div>
                                 </div>
                             )}
                             
-                            {item.notes && !isShadow && <div className={`mt-3 pt-3 border-t ${theme.border} flex gap-2 items-start`}><PenTool size={10} className="mt-0.5 text-[#AAA] shrink-0" /><p className="text-xs text-[#777] leading-relaxed font-serif italic whitespace-pre-wrap">{item.notes}</p></div>}
+                            {item.notes && !isShadow && <div className={`mt-3 pt-3 border-t ${borderColor} flex gap-2 items-start`}><PenTool size={10} className="mt-0.5 text-[#AAA] shrink-0" /><p className={`text-xs ${theme.isDark ? 'text-gray-400' : 'text-[#777]'} leading-relaxed font-serif italic whitespace-pre-wrap`}>{item.notes}</p></div>}
                           </div>
                         </div>
                       </div>
@@ -1929,13 +1871,13 @@ const TripPlanner = ({
               }
               return (
                 <div key={item.id} className="draggable-item group relative" draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd}>
-                  <div onClick={() => toggleComplete(item.id)} className={`${theme.card} rounded-xl p-4 border ${theme.border} shadow-sm transition-all flex gap-4 items-start cursor-pointer ${item.completed ? 'opacity-50 grayscale' : ''}`}>
-                    <div className={`mt-1 w-5 h-5 rounded border flex items-center justify-center transition-all shrink-0 ${item.completed ? `${theme.primaryBg} ${theme.primaryBorder} text-white` : `bg-white ${theme.border} text-transparent hover:${theme.primaryBorder}`}`}><Check size={12} strokeWidth={3} /></div>
+                  <div onClick={() => toggleComplete(item.id)} className={`${cardBg} rounded-xl p-4 border ${borderColor} shadow-sm transition-all flex gap-4 items-start cursor-pointer ${item.completed ? 'opacity-50 grayscale' : ''}`}>
+                    <div className={`mt-1 w-5 h-5 rounded border flex items-center justify-center transition-all shrink-0 ${item.completed ? `${theme.primaryBg} ${theme.primaryBorder} text-white` : `${theme.isDark ? 'bg-black/30' : 'bg-white'} ${borderColor} text-transparent hover:${theme.primaryBorder}`}`}><Check size={12} strokeWidth={3} /></div>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-start gap-2">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className={`text-lg font-bold font-serif hover:${theme.primary} transition-colors ${item.completed ? 'text-[#AAA] line-through' : 'text-[#3A3A3A]'}`} onClick={(e) => { e.stopPropagation(); openEditModal(item); }}>{item.title}</h3>
-                            {item.image && <a href={item.image.link} target="_blank" className="text-[#888] hover:text-[#5F6F52] transition-colors" title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}
+                            <h3 className={`text-lg font-bold font-serif hover:${theme.primary} transition-colors ${item.completed ? 'text-[#AAA] line-through' : textColor}`} onClick={(e) => { e.stopPropagation(); openEditModal(item); }}>{item.title}</h3>
+                            {item.image && <a href={item.image.link} target="_blank" className={`${subTextColor} hover:text-[#5F6F52] transition-colors`} title="查看照片" onClick={e => e.stopPropagation()}><ImageIcon size={16}/></a>}
                             <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.title, item.id + '_title'); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder} opacity-0 group-hover:opacity-100 transition-opacity shrink-0`} title="複製標題">{copiedId === (item.id + '_title') ? <Check size={12} className={theme.primary} /> : <Copy size={12} />}</button>
                           </div>
                           {item.cost > 0 && (checklistTab !== 'packing') && !item.completed && (<div className="text-right shrink-0"><div className={`text-sm font-bold ${theme.accent}`}>{currencySettings.selectedCountry.symbol} {formatMoney(item.cost)}</div></div>)}
@@ -1944,7 +1886,7 @@ const TripPlanner = ({
                           {item.location && (
                               <div className={`flex items-center gap-1 group/location -ml-1.5 px-1.5 py-0.5 rounded ${theme.hover} transition-colors w-fit`}>
                                 <MapPin size={12} className={theme.accent} />
-                                <span>{item.location}</span>
+                                <span className={subTextColor}>{item.location}</span>
                                 <div className="flex gap-2 ml-1 opacity-0 group-hover/location:opacity-100 transition-opacity">
                                     <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.location, item.id); }} className={`w-6 h-6 flex items-center justify-center bg-white border border-slate-200 shadow-sm rounded-full text-slate-400 hover:${theme.primary} hover:${theme.primaryBorder}`} title="複製地址">
                                         {copiedId === item.id ? <Check size={14} className={theme.primary} /> : <Copy size={14} />}
@@ -1958,12 +1900,12 @@ const TripPlanner = ({
                           {item.website && (
                             <div className={`flex items-center gap-1 group/website -ml-1.5 px-1.5 py-0.5 rounded ${theme.hover} transition-colors w-fit`}>
                                 <Globe size={12} className={theme.accent} />
-                                <a href={item.website} target="_blank" rel="noreferrer" className="text-xs text-[#666666] hover:underline" onClick={e => e.stopPropagation()}>
+                                <a href={item.website} target="_blank" rel="noreferrer" className={`text-xs ${subTextColor} hover:underline`} onClick={e => e.stopPropagation()}>
                                   網站連結
                                 </a>
                             </div>
                           )}
-                          {item.notes && <div className={`text-[10px] text-[#888] ${theme.hover} p-1.5 rounded inline-block flex items-center gap-1 whitespace-pre-wrap`}><Tag size={10} className={theme.accent}/> {item.notes}</div>}
+                          {item.notes && <div className={`text-[10px] ${subTextColor} ${theme.hover} p-1.5 rounded inline-block flex items-center gap-1 whitespace-pre-wrap`}><Tag size={10} className={theme.accent}/> {item.notes}</div>}
                       </div>)}
                     </div>
                     <button onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} className={`text-[#999] hover:${theme.danger} opacity-0 group-hover:opacity-100 p-1`}><Trash2 size={20} /></button>
@@ -1978,7 +1920,8 @@ const TripPlanner = ({
 
       {viewMode !== 'statistics' && viewMode !== 'categoryManager' && (
         <button onClick={() => setViewMode('categoryManager')} className={`fixed bottom-24 right-6 w-14 h-14 bg-[#3A3A3A] text-[#F9F8F6] rounded-full shadow-lg shadow-[#3A3A3A]/30 hover:scale-105 ${theme.primaryBg} transition-all flex items-center justify-center z-50 animate-in zoom-in duration-300 group`} title="管理類別">
-          <LayoutList size={26} strokeWidth={1.5} />
+          {/* Kamaji Hammer Icon */}
+          <Hammer size={26} strokeWidth={1.5} className="group-hover:rotate-12 transition-transform"/>
         </button>
       )}
 
@@ -1995,84 +1938,83 @@ const TripPlanner = ({
 
       {isCategoryEditModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
-          <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border} animate-in zoom-in-95`}>
-             <div className="p-6 border-b border-[#F0F0F0]"><h2 className="text-lg font-bold font-serif text-[#3A3A3A]">{categoryFormData.isNew ? '新增類別' : '編輯類別'}</h2></div>
+          <div className={`${cardBg} w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${borderColor} animate-in zoom-in-95`}>
+             <div className={`p-6 border-b ${borderColor}`}><h2 className={`text-lg font-bold font-serif ${textColor}`}>{categoryFormData.isNew ? '新增類別' : '編輯類別'}</h2></div>
              <div className="p-6 space-y-4 overflow-y-auto">
-               <div><label className="block text-xs font-bold text-[#888] mb-1">類別 ID (唯一)</label><input type="text" disabled={!categoryFormData.isNew} value={categoryFormData.id} onChange={e => setCategoryFormData({...categoryFormData, id: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none ${!categoryFormData.isNew ? 'opacity-50 cursor-not-allowed' : ''}`} /></div>
-               <div><label className="block text-xs font-bold text-[#888] mb-1">類別名稱</label><input type="text" value={categoryFormData.label} onChange={e => setCategoryFormData({...categoryFormData, label: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder}`} /></div>
+               <div><label className={`block text-xs font-bold ${subTextColor} mb-1`}>類別 ID (唯一)</label><input type="text" disabled={!categoryFormData.isNew} value={categoryFormData.id} onChange={e => setCategoryFormData({...categoryFormData, id: e.target.value})} className={`w-full ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg p-2 text-base ${textColor} focus:outline-none ${!categoryFormData.isNew ? 'opacity-50 cursor-not-allowed' : ''}`} /></div>
+               <div><label className={`block text-xs font-bold ${subTextColor} mb-1`}>類別名稱</label><input type="text" value={categoryFormData.label} onChange={e => setCategoryFormData({...categoryFormData, label: e.target.value})} className={`w-full ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg p-2 text-base ${textColor} focus:outline-none focus:${theme.primaryBorder}`} /></div>
                {categoryManagerTab === 'itinerary' && (
-                 <div><label className="block text-xs font-bold text-[#888] mb-2">標籤顏色</label><div className="grid grid-cols-8 gap-2">{CATEGORY_COLORS.map(color => (<button key={color} onClick={() => setCategoryFormData({...categoryFormData, color})} className={`w-8 h-8 rounded-full ${color} border ${categoryFormData.color === color ? 'border-2 border-[#5F6F52] scale-110' : 'border-[#E0E0E0]'}`}></button>))}</div></div>
+                 <div><label className={`block text-xs font-bold ${subTextColor} mb-2`}>標籤顏色</label><div className="grid grid-cols-8 gap-2">{CATEGORY_COLORS.map(color => (<button key={color} onClick={() => setCategoryFormData({...categoryFormData, color})} className={`w-8 h-8 rounded-full ${color} border ${categoryFormData.color === color ? 'border-2 border-[#5F6F52] scale-110' : 'border-[#E0E0E0]'}`}></button>))}</div></div>
                )}
-               <div><label className="block text-xs font-bold text-[#888] mb-2">圖示</label><div className="grid grid-cols-6 gap-2 h-40 overflow-y-auto p-1 border rounded-lg bg-[#FAFAFA]">{Object.keys(ICON_REGISTRY).map(iconName => { const IconComp = ICON_REGISTRY[iconName]; return (<button key={iconName} onClick={() => setCategoryFormData({...categoryFormData, icon: iconName})} className={`aspect-square flex items-center justify-center rounded hover:bg-[#EEE] ${categoryFormData.icon === iconName ? `${theme.primaryBg} text-white` : 'text-[#666]'}`}><IconComp size={20} /></button>); })}</div></div>
+               <div><label className={`block text-xs font-bold ${subTextColor} mb-2`}>圖示</label><div className={`grid grid-cols-6 gap-2 h-40 overflow-y-auto p-1 border rounded-lg ${theme.isDark ? 'bg-black/10' : 'bg-[#FAFAFA]'}`}>{Object.keys(ICON_REGISTRY).map(iconName => { const IconComp = ICON_REGISTRY[iconName]; return (<button key={iconName} onClick={() => setCategoryFormData({...categoryFormData, icon: iconName})} className={`aspect-square flex items-center justify-center rounded hover:bg-[#EEE] ${categoryFormData.icon === iconName ? `${theme.primaryBg} text-white` : 'text-[#666]'}`}><IconComp size={20} /></button>); })}</div></div>
              </div>
-             <div className="p-4 border-t border-[#F0F0F0] flex gap-2"><button onClick={() => setIsCategoryEditModalOpen(false)} className="flex-1 py-2 text-xs font-bold text-[#888] hover:bg-[#F0F0F0] rounded-lg">取消</button><button onClick={handleCategorySave} className={`flex-1 py-2 text-xs font-bold text-white ${theme.primaryBg} rounded-lg`}>儲存</button></div>
+             <div className={`p-4 border-t ${borderColor} flex gap-2`}><button onClick={() => setIsCategoryEditModalOpen(false)} className={`flex-1 py-2 text-xs font-bold ${subTextColor} hover:bg-[#F0F0F0] rounded-lg`}>取消</button><button onClick={handleCategorySave} className={`flex-1 py-2 text-xs font-bold text-white ${theme.primaryBg} rounded-lg`}>儲存</button></div>
           </div>
         </div>
       )}
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
-          <div className={`bg-[#FDFCFB] w-full max-w-md rounded-xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 border ${theme.border}`}>
-            <div className={`px-6 py-4 bg-[#F7F5F0] border-b ${theme.border} flex justify-between items-center shrink-0`}><h2 className="text-base font-bold text-[#3A3A3A] font-serif tracking-wide">{editingItem ? '編輯' : '新增'}</h2><button onClick={() => setIsModalOpen(false)}><X size={20} className="text-[#999]" /></button></div>
+          <div className={`${cardBg} w-full max-w-md rounded-xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 border ${borderColor}`}>
+            <div className={`px-6 py-4 ${theme.isDark ? 'bg-white/5' : 'bg-[#F7F5F0]'} border-b ${borderColor} flex justify-between items-center shrink-0`}><h2 className={`text-base font-bold ${textColor} font-serif tracking-wide`}>{editingItem ? '編輯' : '新增'}</h2><button onClick={() => setIsModalOpen(false)}><X size={20} className="text-[#999]" /></button></div>
             <div className="overflow-y-auto p-6 flex-1">
               <form id="item-form" onSubmit={handleSubmitItem} className="space-y-4">
                 {viewMode === 'itinerary' && (
                   <>
-                    <div className="grid grid-cols-5 gap-1 mb-2">{itineraryCategories.map((cat) => { const CatIcon = getIconComponent(cat.icon); return (<button key={cat.id} type="button" onClick={() => setFormData({...formData, type: cat.id})} className={`py-2 px-0.5 rounded-lg border text-xs font-bold transition-all flex flex-col items-center gap-1 ${formData.type === cat.id ? `${theme.primaryBorder} ${theme.primaryBg} text-white` : `${theme.border} bg-white text-[#888] ${theme.hover}`}`}><CatIcon size={16} /><span className="text-[10px] scale-90 truncate w-full text-center">{cat.label}</span></button>) })}</div>
+                    <div className="grid grid-cols-5 gap-1 mb-2">{itineraryCategories.map((cat) => { const CatIcon = getIconComponent(cat.icon); return (<button key={cat.id} type="button" onClick={() => setFormData({...formData, type: cat.id})} className={`py-2 px-0.5 rounded-lg border text-xs font-bold transition-all flex flex-col items-center gap-1 ${formData.type === cat.id ? `${theme.primaryBorder} ${theme.primaryBg} text-white` : `${borderColor} ${theme.isDark ? 'bg-black/20' : 'bg-white'} ${subTextColor} ${theme.hover}`}`}><CatIcon size={16} /><span className="text-[10px] scale-90 truncate w-full text-center">{cat.label}</span></button>) })}</div>
                     <div className="flex flex-wrap gap-4 items-end">
-                      <div className="flex-1 min-w-[120px]"><label className="block text-xs font-bold text-[#888] mb-1">開始時間</label><input type="time" value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder} h-10`} /></div>
+                      <div className="flex-1 min-w-[120px]"><label className={`block text-xs font-bold ${subTextColor} mb-1`}>開始時間</label><input type="time" value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} className={`w-full ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg p-2 text-base ${textColor} focus:outline-none focus:${theme.primaryBorder} h-10`} /></div>
                       <div className="flex-1 min-w-[140px] flex gap-2 items-end">
-                        <div className="flex-1"><label className="block text-xs font-bold text-[#888] mb-1">停留 (分)</label><input type="number" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="numeric" value={formData.duration === 0 ? '' : formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder} h-10`} /></div>
-                        <div className="flex flex-col gap-1 pb-0.5"><div className="flex gap-1"><button type="button" onClick={() => setFormData({...formData, duration: 30})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[2.5rem] text-center h-[18px] flex items-center justify-center`}>30</button><button type="button" onClick={() => setFormData({...formData, duration: 60})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[2.5rem] text-center h-[18px] flex items-center justify-center`}>60</button></div><div className="flex gap-1"><button type="button" onClick={() => setFormData({...formData, duration: 90})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[2.5rem] text-center h-[18px] flex items-center justify-center`}>90</button><button type="button" onClick={() => setFormData({...formData, duration: 120})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded text-[#888] hover:${theme.border} whitespace-nowrap min-w-[2.5rem] text-center h-[18px] flex items-center justify-center`}>120</button></div></div>
+                        <div className="flex-1"><label className={`block text-xs font-bold ${subTextColor} mb-1`}>停留 (分)</label><input type="number" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="numeric" value={formData.duration === 0 ? '' : formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} className={`w-full ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg p-2 text-base ${textColor} focus:outline-none focus:${theme.primaryBorder} h-10`} /></div>
+                        <div className="flex flex-col gap-1 pb-0.5"><div className="flex gap-1"><button type="button" onClick={() => setFormData({...formData, duration: 30})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded ${subTextColor} hover:${borderColor} whitespace-nowrap min-w-[2.5rem] text-center h-[18px] flex items-center justify-center`}>30</button><button type="button" onClick={() => setFormData({...formData, duration: 60})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded ${subTextColor} hover:${borderColor} whitespace-nowrap min-w-[2.5rem] text-center h-[18px] flex items-center justify-center`}>60</button></div><div className="flex gap-1"><button type="button" onClick={() => setFormData({...formData, duration: 90})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded ${subTextColor} hover:${borderColor} whitespace-nowrap min-w-[2.5rem] text-center h-[18px] flex items-center justify-center`}>90</button><button type="button" onClick={() => setFormData({...formData, duration: 120})} className={`text-[10px] ${theme.hover} px-2 py-0.5 rounded ${subTextColor} hover:${borderColor} whitespace-nowrap min-w-[2.5rem] text-center h-[18px] flex items-center justify-center`}>120</button></div></div>
                       </div>
                     </div>
                   </>
                 )}
                 {viewMode === 'expenses' ? (
                   <>
-                      <div className="mb-3"><label className="block text-xs font-bold text-[#888] mb-1">類別</label><div className="grid grid-cols-4 sm:grid-cols-6 gap-2">{expenseCategories.map((cat) => { const CatIcon = getIconComponent(cat.icon); return (<button key={cat.id} type="button" onClick={() => setFormData({...formData, category: cat.id})} className={`py-2 px-1 rounded-lg border text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${formData.category === cat.id ? `${theme.primaryBorder} ${theme.primaryBg} text-white` : `${theme.border} bg-white text-[#888] ${theme.hover}`}`}><CatIcon size={16} /><span>{cat.label}</span></button>); })}</div></div>
-                      <div className="mb-3"><label className="block text-xs font-bold text-[#888] mb-1">日期</label><input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 text-base text-[#3A3A3A] focus:outline-none focus:${theme.primaryBorder}`} /></div>
-                      <div className="flex gap-3"><div className="w-1/3"><input type="text" placeholder="地區" required value={formData.region} onChange={e => setFormData({...formData, region: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-base font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div><div className="flex-1"><input type="text" placeholder="項目名稱" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-base font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div></div>
+                      <div className="mb-3"><label className={`block text-xs font-bold ${subTextColor} mb-1`}>類別</label><div className="grid grid-cols-4 sm:grid-cols-6 gap-2">{expenseCategories.map((cat) => { const CatIcon = getIconComponent(cat.icon); return (<button key={cat.id} type="button" onClick={() => setFormData({...formData, category: cat.id})} className={`py-2 px-1 rounded-lg border text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${formData.category === cat.id ? `${theme.primaryBorder} ${theme.primaryBg} text-white` : `${borderColor} ${theme.isDark ? 'bg-black/20' : 'bg-white'} ${subTextColor} ${theme.hover}`}`}><CatIcon size={16} /><span>{cat.label}</span></button>); })}</div></div>
+                      <div className="mb-3"><label className={`block text-xs font-bold ${subTextColor} mb-1`}>日期</label><input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className={`w-full ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg p-2 text-base ${textColor} focus:outline-none focus:${theme.primaryBorder}`} /></div>
+                      <div className="flex gap-3"><div className="w-1/3"><input type="text" placeholder="地區" required value={formData.region} onChange={e => setFormData({...formData, region: e.target.value})} className={`w-full bg-transparent border-b ${borderColor} py-2 text-base font-bold ${textColor} placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div><div className="flex-1"><input type="text" placeholder="項目名稱" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className={`w-full bg-transparent border-b ${borderColor} py-2 text-base font-bold ${textColor} placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div></div>
                       <div>
-                        <label className="block text-xs font-bold text-[#888] mb-1">預算 / 費用 (總額)</label>
-                        <div className="flex gap-2"><div className="relative flex-[2.2]"><select value={formData.costType} onChange={(e) => setFormData({...formData, costType: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg pl-3 pr-8 py-2.5 text-[#3A3A3A] text-base appearance-none focus:outline-none focus:${theme.primaryBorder} h-10 font-bold`}><option value="FOREIGN">{currencySettings.selectedCountry.flag} {currencySettings.selectedCountry.currency}</option><option value="TWD">🇹🇼 TWD</option></select><div className="absolute right-3 top-3.5 pointer-events-none text-[#888] text-[10px]">▼</div></div><input type="text" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" placeholder="0" value={formatInputNumber(formData.cost)} onChange={handleTotalCostChange} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder} font-serif h-10`} /></div>
+                        <label className={`block text-xs font-bold ${subTextColor} mb-1`}>預算 / 費用 (總額)</label>
+                        <div className="flex gap-2"><div className="relative flex-[2.2]"><select value={formData.costType} onChange={(e) => setFormData({...formData, costType: e.target.value})} className={`w-full ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg pl-3 pr-8 py-2.5 ${textColor} text-base appearance-none focus:outline-none focus:${theme.primaryBorder} h-10 font-bold`}><option value="FOREIGN">{currencySettings.selectedCountry.flag} {currencySettings.selectedCountry.currency}</option><option value="TWD">🇹🇼 TWD</option></select><div className="absolute right-3 top-3.5 pointer-events-none text-[#888] text-[10px]">▼</div></div><input type="text" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" placeholder="0" value={formatInputNumber(formData.cost)} onChange={handleTotalCostChange} className={`flex-1 ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg px-3 py-2.5 ${textColor} text-base focus:outline-none focus:${theme.primaryBorder} font-serif h-10`} /></div>
                       </div>
-                      <div className={`bg-[#F2F0EB] p-3 rounded-lg border ${theme.border}`}>
+                      <div className={`${theme.isDark ? 'bg-black/10' : 'bg-[#F2F0EB]'} p-3 rounded-lg border ${borderColor}`}>
                         <div className="flex justify-between items-center mb-2"><label className={`text-xs font-bold ${theme.primary}`}>分攤方式</label></div>
-                        <div className="space-y-2 mb-3">{formData.details && formData.details.map((detail, idx) => { const currentCurrencyLabel = formData.costType === 'TWD' ? 'TWD' : currencySettings.selectedCountry.currency; return (<div key={detail.id} className={`flex flex-wrap items-center gap-2 bg-white p-2 rounded border ${theme.border} shadow-sm text-xs`}><AvatarSelect value={detail.payer} options={[...companions, 'EACH']} onChange={(val) => updateSplitDetail(detail.id, 'payer', val)} theme={theme} companions={companions} /><ArrowRight size={10} className="text-[#CCC]" /><AvatarSelect value={detail.target} options={[...companions, 'ALL', 'EACH']} onChange={(val) => updateSplitDetail(detail.id, 'target', val)} theme={theme} companions={companions} disabled={detail.payer === 'EACH'} /><div className="flex-1 flex items-center justify-end gap-1"><span className="text-[10px] text-[#888]">{currentCurrencyLabel}</span><input type="text" inputMode="decimal" value={formatInputNumber(detail.amount)} onFocus={(e) => e.target.select()} onChange={(e) => { const val = e.target.value.replace(/,/g, ''); if (!isNaN(val)) { updateSplitDetail(detail.id, 'amount', val === '' ? 0 : parseFloat(val)); } }} className={`w-20 text-right border-b ${theme.border} focus:${theme.primaryBorder} focus:outline-none bg-transparent font-bold text-base`} /></div>{formData.details.length > 1 && (<button type="button" onClick={() => removeSplitDetail(detail.id)} className={`text-[#C55A5A] hover:${theme.dangerBg} p-1 rounded`}><X size={12} /></button>)}</div>); })}</div>
+                        <div className="space-y-2 mb-3">{formData.details && formData.details.map((detail, idx) => { const currentCurrencyLabel = formData.costType === 'TWD' ? 'TWD' : currencySettings.selectedCountry.currency; return (<div key={detail.id} className={`flex flex-wrap items-center gap-2 ${theme.isDark ? 'bg-[#424242]' : 'bg-white'} p-2 rounded border ${borderColor} shadow-sm text-xs`}><AvatarSelect value={detail.payer} options={[...companions, 'EACH']} onChange={(val) => updateSplitDetail(detail.id, 'payer', val)} theme={theme} companions={companions} /><ArrowRight size={10} className="text-[#CCC]" /><AvatarSelect value={detail.target} options={[...companions, 'ALL', 'EACH']} onChange={(val) => updateSplitDetail(detail.id, 'target', val)} theme={theme} companions={companions} disabled={detail.payer === 'EACH'} /><div className="flex-1 flex items-center justify-end gap-1"><span className="text-[10px] text-[#888]">{currentCurrencyLabel}</span><input type="text" inputMode="decimal" value={formatInputNumber(detail.amount)} onFocus={(e) => e.target.select()} onChange={(e) => { const val = e.target.value.replace(/,/g, ''); if (!isNaN(val)) { updateSplitDetail(detail.id, 'amount', val === '' ? 0 : parseFloat(val)); } }} className={`w-20 text-right border-b ${borderColor} focus:${theme.primaryBorder} focus:outline-none bg-transparent font-bold text-base ${textColor}`} /></div>{formData.details.length > 1 && (<button type="button" onClick={() => removeSplitDetail(detail.id)} className={`text-[#C55A5A] hover:${theme.dangerBg} p-1 rounded`}><X size={12} /></button>)}</div>); })}</div>
                         <button type="button" onClick={addSplitDetail} className={`w-full py-2 border border-dashed border-[#A98467] text-[#A98467] rounded hover:bg-[#FDFCFB] text-xs font-bold flex items-center justify-center gap-1 transition-colors`} style={{ borderColor: theme.accentHex, color: theme.accentHex }}><Plus size={12} /> 新增分帳</button>
                       </div>
                   </>
                 ) : (
                   <>
                     {(checklistTab === 'food' || checklistTab === 'shopping' || checklistTab === 'sightseeing') ? (
-                      <div className="flex gap-3"><div className="w-1/3"><input type="text" placeholder="地區" required value={formData.region} onChange={e => setFormData({...formData, region: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-base font-serif font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div><div className="flex-1"><input type="text" placeholder="店名 / 景點 / 商品" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-base font-serif font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div></div>
+                      <div className="flex gap-3"><div className="w-1/3"><input type="text" placeholder="地區" required value={formData.region} onChange={e => setFormData({...formData, region: e.target.value})} className={`w-full bg-transparent border-b ${borderColor} py-2 text-base font-serif font-bold ${textColor} placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div><div className="flex-1"><input type="text" placeholder="店名 / 景點 / 商品" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className={`w-full bg-transparent border-b ${borderColor} py-2 text-base font-serif font-bold ${textColor} placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} /></div></div>
                     ) : (
-                      <input type="text" placeholder={checklistTab === 'packing' && viewMode === 'checklist' ? "物品名稱" : "標題"} required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className={`w-full bg-transparent border-b ${theme.border} py-2 text-base font-serif font-bold text-[#3A3A3A] placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} />
+                      <input type="text" placeholder={checklistTab === 'packing' && viewMode === 'checklist' ? "物品名稱" : "標題"} required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className={`w-full bg-transparent border-b ${borderColor} py-2 text-base font-serif font-bold ${textColor} placeholder-[#CCC] focus:outline-none focus:${theme.primaryBorder}`} />
                     )}
                     {(viewMode === 'itinerary' || checklistTab !== 'packing') && (
                       <div>
-                        <label className="block text-xs font-bold text-[#888] mb-1">預算 / 費用</label>
-                        <div className="flex gap-2"><div className="relative flex-[2.2]"><select value={formData.costType} onChange={(e) => setFormData({...formData, costType: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg pl-3 pr-8 py-2.5 text-[#3A3A3A] text-base appearance-none focus:outline-none focus:${theme.primaryBorder} h-10 font-bold`}><option value="FOREIGN">{currencySettings.selectedCountry.flag} {currencySettings.selectedCountry.currency}</option><option value="TWD">🇹🇼 TWD</option></select><div className="absolute right-3 top-3.5 pointer-events-none text-[#888] text-[10px]">▼</div></div><input type="text" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" placeholder="0" value={formatInputNumber(formData.cost)} onChange={handleTotalCostChange} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder} font-serif h-10`} /></div>
+                        <label className={`block text-xs font-bold ${subTextColor} mb-1`}>預算 / 費用</label>
+                        <div className="flex gap-2"><div className="relative flex-[2.2]"><select value={formData.costType} onChange={(e) => setFormData({...formData, costType: e.target.value})} className={`w-full ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg pl-3 pr-8 py-2.5 ${textColor} text-base appearance-none focus:outline-none focus:${theme.primaryBorder} h-10 font-bold`}><option value="FOREIGN">{currencySettings.selectedCountry.flag} {currencySettings.selectedCountry.currency}</option><option value="TWD">🇹🇼 TWD</option></select><div className="absolute right-3 top-3.5 pointer-events-none text-[#888] text-[10px]">▼</div></div><input type="text" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" placeholder="0" value={formatInputNumber(formData.cost)} onChange={handleTotalCostChange} className={`flex-1 ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg px-3 py-2.5 ${textColor} text-base focus:outline-none focus:${theme.primaryBorder} font-serif h-10`} /></div>
                       </div>
                     )}
                     
-                    {/* Region Input for Itinerary */}
                     {viewMode === 'itinerary' && (
-                         <div className="flex items-center gap-2 text-[#888]"><MapIcon size={16} /><input type="text" placeholder="地區 (選填)" value={formData.region} onChange={e => setFormData({...formData, region: e.target.value})} className={`flex-1 bg-transparent border-b ${theme.border} py-1 text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
+                         <div className="flex items-center gap-2 text-[#888]"><MapIcon size={16} /><input type="text" placeholder="地區 (選填)" value={formData.region} onChange={e => setFormData({...formData, region: e.target.value})} className={`flex-1 bg-transparent border-b ${borderColor} py-1 text-base focus:outline-none focus:${theme.primaryBorder} ${textColor}`} /></div>
                     )}
 
                     {(viewMode === 'itinerary' || checklistTab !== 'packing') && (
                       <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-[#888]"><MapPin size={16} /><input type="text" placeholder="地點/地址" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} className={`flex-1 bg-transparent border-b ${theme.border} py-1 text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
-                        <div className="flex items-center gap-2 text-[#888]"><Globe size={16} /><input type="url" placeholder="網站連結" value={formData.website} onChange={e => setFormData({...formData, website: e.target.value})} className={`flex-1 bg-transparent border-b ${theme.border} py-1 text-base focus:outline-none focus:${theme.primaryBorder} placeholder:text-xs`} /></div>
+                        <div className="flex items-center gap-2 text-[#888]"><MapPin size={16} /><input type="text" placeholder="地點/地址" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} className={`flex-1 bg-transparent border-b ${borderColor} py-1 text-base focus:outline-none focus:${theme.primaryBorder} ${textColor}`} /></div>
+                        <div className="flex items-center gap-2 text-[#888]"><Globe size={16} /><input type="url" placeholder="網站連結" value={formData.website} onChange={e => setFormData({...formData, website: e.target.value})} className={`flex-1 bg-transparent border-b ${borderColor} py-1 text-base focus:outline-none focus:${theme.primaryBorder} placeholder:text-xs ${textColor}`} /></div>
                       </div>
                     )}
                   </>
                 )}
                 
-                <div className={`p-4 rounded-lg bg-[#F9F9F9] border ${theme.border}`}>
-                    <label className="block text-xs font-bold text-[#888] mb-2 flex items-center gap-1"><ImageIcon size={14}/> 照片 (Google Drive)</label>
+                <div className={`p-4 rounded-lg ${theme.isDark ? 'bg-black/10' : 'bg-[#F9F9F9]'} border ${borderColor}`}>
+                    <label className={`block text-xs font-bold ${subTextColor} mb-2 flex items-center gap-1`}><ImageIcon size={14}/> 照片 (Google Drive)</label>
                     {formData.image ? (
                         <div className="flex items-center gap-3">
                             <div className="flex-1 text-xs text-[#5F6F52] font-medium truncate flex items-center gap-1">
@@ -2097,81 +2039,79 @@ const TripPlanner = ({
                 </div>
 
                 {(viewMode === 'itinerary' || viewMode === 'expenses' || checklistTab !== 'packing') && (
-                  <div><label className="block text-xs font-bold text-[#888] mb-1">備註</label><textarea rows={2} placeholder="備註..." value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg p-3 text-base text-[#666] resize-none focus:outline-none focus:${theme.primaryBorder}`} /></div>
+                  <div><label className={`block text-xs font-bold ${subTextColor} mb-1`}>備註</label><textarea rows={2} placeholder="備註..." value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className={`w-full ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg p-3 text-base ${textColor} resize-none focus:outline-none focus:${theme.primaryBorder}`} /></div>
                 )}
               </form>
             </div>
-            <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] shrink-0`}><button type="submit" form="item-form" className={`w-full bg-[#3A3A3A] text-[#F9F8F6] py-3 rounded-lg font-bold text-sm hover:${theme.primaryBg} transition-colors`} disabled={isUploadingImage}>{isUploadingImage ? '上傳中...' : (editingItem ? '儲存' : '新增')}</button></div>
+            <div className={`p-4 border-t ${borderColor} ${theme.isDark ? 'bg-black/20' : 'bg-[#FDFCFB]'} shrink-0`}><button type="submit" form="item-form" className={`w-full ${theme.isDark ? 'bg-white text-black' : 'bg-[#3A3A3A] text-[#F9F8F6]'} py-3 rounded-lg font-bold text-sm hover:${theme.primaryBg} hover:text-white transition-colors`} disabled={isUploadingImage}>{isUploadingImage ? '上傳中...' : (editingItem ? '儲存' : '新增')}</button></div>
           </div>
         </div>
       )}
 
       {isSettingsOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
-          <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border} animate-in zoom-in-95`}>
-            <div className="p-6 shrink-0 text-center mb-0"><h2 className="text-xl font-serif font-bold text-[#3A3A3A]">旅程設定</h2></div>
+          <div className={`${cardBg} w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${borderColor} animate-in zoom-in-95`}>
+            <div className="p-6 shrink-0 text-center mb-0"><h2 className={`text-xl font-serif font-bold ${textColor}`}>旅程設定</h2></div>
             <div className="overflow-y-auto px-6 pb-6 flex-1">
               <form id="settings-form" onSubmit={handleSettingsSubmit} className="space-y-5">
-                <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">旅程標題</label><input type="text" value={tempSettings.title || ''} onChange={e => setTempSettings({...tempSettings, title: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
-                <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">出發日</label><input type="date" value={tempSettings.startDate || ''} onChange={handleStartDateChange} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /></div><div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">回程日</label><input type="date" value={tempSettings.endDate || ''} min={tempSettings.startDate || ''} onChange={(e) => setTempSettings({...tempSettings, endDate: e.target.value})} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /></div></div>
-                <div><label className="block text-xs font-bold text-[#888] mb-2 uppercase flex items-center gap-1"><Palette size={12}/> 顏色主題</label><div className="flex gap-2 justify-between">{Object.values(THEMES).map((t) => (<button key={t.id} type="button" onClick={() => onChangeTheme(t.id)} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${t.bg} border ${t.id === theme.id ? `border-2 ${t.primaryBorder} scale-110 shadow-md` : 'border-gray-200'}`} title={t.label}><div className={`w-4 h-4 rounded-full ${t.primaryBg}`}></div></button>))}</div></div>
-                <div className={`text-center bg-[#F2F0EB] py-2 rounded-lg border border-dashed ${theme.border}`}><span className="text-xs text-[#888] font-bold">總天數: </span><span className={`text-sm font-serif font-bold ${theme.primary}`}>{calculateDaysDiff(tempSettings.startDate, tempSettings.endDate)} 天</span></div>
+                <div><label className={`block text-xs font-bold ${subTextColor} mb-1.5 uppercase`}>旅程標題</label><input type="text" value={tempSettings.title || ''} onChange={e => setTempSettings({...tempSettings, title: e.target.value})} className={`w-full ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg px-3 py-2.5 ${textColor} text-base focus:outline-none focus:${theme.primaryBorder}`} /></div>
+                <div className="grid grid-cols-2 gap-4"><div><label className={`block text-xs font-bold ${subTextColor} mb-1.5 uppercase`}>出發日</label><input type="date" value={tempSettings.startDate || ''} onChange={handleStartDateChange} className={`w-full ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg px-3 py-2.5 ${textColor} text-base focus:outline-none focus:${theme.primaryBorder}`} /></div><div><label className={`block text-xs font-bold ${subTextColor} mb-1.5 uppercase`}>回程日</label><input type="date" value={tempSettings.endDate || ''} min={tempSettings.startDate || ''} onChange={(e) => setTempSettings({...tempSettings, endDate: e.target.value})} className={`w-full ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg px-3 py-2.5 ${textColor} text-base focus:outline-none focus:${theme.primaryBorder}`} /></div></div>
+                <div><label className={`block text-xs font-bold ${subTextColor} mb-2 uppercase flex items-center gap-1`}><Palette size={12}/> 顏色主題</label><div className="flex gap-2 justify-between">{Object.values(THEMES).map((t) => (<button key={t.id} type="button" onClick={() => onChangeTheme(t.id)} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${t.bg} border ${t.id === theme.id ? `border-2 ${t.primaryBorder} scale-110 shadow-md` : 'border-gray-200'}`} title={t.label}><div className={`w-4 h-4 rounded-full ${t.primaryBg}`}></div></button>))}</div></div>
+                <div className={`text-center ${theme.isDark ? 'bg-black/10' : 'bg-[#F2F0EB]'} py-2 rounded-lg border border-dashed ${borderColor}`}><span className={`text-xs ${subTextColor} font-bold`}>總天數: </span><span className={`text-sm font-serif font-bold ${theme.primary}`}>{calculateDaysDiff(tempSettings.startDate, tempSettings.endDate)} 天</span></div>
               </form>
             </div>
-            <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] flex gap-3 shrink-0`}><button type="button" onClick={() => setIsSettingsOpen(false)} className={`flex-1 py-2.5 text-xs font-bold text-[#888] hover:${theme.hover} rounded-lg`}>取消</button><button type="submit" form="settings-form" className={`flex-1 ${theme.primaryBg} text-white py-2.5 rounded-lg text-xs font-bold hover:opacity-90`}>完成</button></div>
+            <div className={`p-4 border-t ${borderColor} ${theme.isDark ? 'bg-black/20' : 'bg-[#FDFCFB]'} flex gap-3 shrink-0`}><button type="button" onClick={() => setIsSettingsOpen(false)} className={`flex-1 py-2.5 text-xs font-bold ${subTextColor} hover:${theme.hover} rounded-lg`}>取消</button><button type="submit" form="settings-form" className={`flex-1 ${theme.primaryBg} text-white py-2.5 rounded-lg text-xs font-bold hover:opacity-90`}>完成</button></div>
           </div>
         </div>
       )}
 
       {isCurrencyModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
-          <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border}`}>
-            <div className="p-6 shrink-0 text-center mb-0"><div className={`w-12 h-12 bg-[#F2F0EB] rounded-full flex items-center justify-center mx-auto mb-3 ${theme.accent}`}><Calculator size={24} /></div><h2 className="text-xl font-serif font-bold text-[#3A3A3A]">通貨設定</h2></div>
+          <div className={`${cardBg} w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${borderColor}`}>
+            <div className="p-6 shrink-0 text-center mb-0"><div className={`w-12 h-12 ${theme.isDark ? 'bg-white/10' : 'bg-[#F2F0EB]'} rounded-full flex items-center justify-center mx-auto mb-3 ${theme.accent}`}><Calculator size={24} /></div><h2 className={`text-xl font-serif font-bold ${textColor}`}>通貨設定</h2></div>
             <div className="overflow-y-auto px-6 pb-6 flex-1">
               <form id="currency-form" onSubmit={handleCurrencySubmit} className="space-y-5">
-                <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">旅遊國家</label><div className="relative"><select value={tempCurrency?.selectedCountry?.code || ''} onChange={(e) => { const country = COUNTRY_OPTIONS.find(c => c.code === e.target.value); setTempCurrency({ ...tempCurrency, selectedCountry: country, exchangeRate: country.defaultRate }); }} className={`w-full bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-3 text-[#3A3A3A] text-base appearance-none focus:outline-none focus:${theme.primaryBorder}`}>{COUNTRY_OPTIONS.map(c => <option key={c.code} value={c.code}>{c.flag} {c.name} {c.currency}</option>)}</select><div className="absolute right-3 top-3.5 pointer-events-none text-[#888]">▼</div></div></div>
-                <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">匯率</label><div className="flex items-center gap-3 justify-center"><span className={`text-sm font-bold ${theme.primary} whitespace-nowrap`}>1 {tempCurrency?.selectedCountry?.currency || '???'} =</span><input type="number" step="0.0001" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" value={tempCurrency?.exchangeRate || 0} onChange={e => setTempCurrency({...tempCurrency, exchangeRate: parseFloat(e.target.value)})} className={`w-28 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] font-bold text-center focus:outline-none focus:${theme.primaryBorder} text-base`} /><span className={`text-sm font-bold ${theme.primary}`}>TWD</span></div></div>
+                <div><label className={`block text-xs font-bold ${subTextColor} mb-1.5 uppercase`}>旅遊國家</label><div className="relative"><select value={tempCurrency?.selectedCountry?.code || ''} onChange={(e) => { const country = COUNTRY_OPTIONS.find(c => c.code === e.target.value); setTempCurrency({ ...tempCurrency, selectedCountry: country, exchangeRate: country.defaultRate }); }} className={`w-full ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg px-3 py-3 ${textColor} text-base appearance-none focus:outline-none focus:${theme.primaryBorder}`}>{COUNTRY_OPTIONS.map(c => <option key={c.code} value={c.code}>{c.flag} {c.name} {c.currency}</option>)}</select><div className="absolute right-3 top-3.5 pointer-events-none text-[#888]">▼</div></div></div>
+                <div><label className={`block text-xs font-bold ${subTextColor} mb-1.5 uppercase`}>匯率</label><div className="flex items-center gap-3 justify-center"><span className={`text-sm font-bold ${theme.primary} whitespace-nowrap`}>1 {tempCurrency?.selectedCountry?.currency || '???'} =</span><input type="number" step="0.0001" min="0" onFocus={(e) => e.target.select()} onKeyDown={blockInvalidChar} inputMode="decimal" value={tempCurrency?.exchangeRate || 0} onChange={e => setTempCurrency({...tempCurrency, exchangeRate: parseFloat(e.target.value)})} className={`w-28 ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg px-3 py-2.5 ${textColor} font-bold text-center focus:outline-none focus:${theme.primaryBorder} text-base`} /><span className={`text-sm font-bold ${theme.primary}`}>TWD</span></div></div>
               </form>
             </div>
-            <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] flex gap-3 shrink-0`}><button type="button" onClick={() => setIsCurrencyModalOpen(false)} className={`flex-1 py-2.5 text-xs font-bold text-[#888] hover:${theme.hover} rounded-lg`}>取消</button><button type="submit" form="currency-form" className={`flex-1 ${theme.primaryBg} text-white py-2.5 rounded-lg text-xs font-bold hover:opacity-90`}>確認設定</button></div>
+            <div className={`p-4 border-t ${borderColor} ${theme.isDark ? 'bg-black/20' : 'bg-[#FDFCFB]'} flex gap-3 shrink-0`}><button type="button" onClick={() => setIsCurrencyModalOpen(false)} className={`flex-1 py-2.5 text-xs font-bold ${subTextColor} hover:${theme.hover} rounded-lg`}>取消</button><button type="submit" form="currency-form" className={`flex-1 ${theme.primaryBg} text-white py-2.5 rounded-lg text-xs font-bold hover:opacity-90`}>確認設定</button></div>
           </div>
         </div>
       )}
 
       {isCompanionModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
-          <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border}`}>
-            <div className="p-6 shrink-0 text-center mb-0"><div className={`w-12 h-12 bg-[#F2F0EB] rounded-full flex items-center justify-center mx-auto mb-3 ${theme.accent}`}><Users size={24} /></div><h2 className="text-xl font-serif font-bold text-[#3A3A3A]">旅伴管理</h2></div>
+          <div className={`${cardBg} w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${borderColor}`}>
+            <div className="p-6 shrink-0 text-center mb-0"><div className={`w-12 h-12 ${theme.isDark ? 'bg-white/10' : 'bg-[#F2F0EB]'} rounded-full flex items-center justify-center mx-auto mb-3 ${theme.accent}`}><Users size={24} /></div><h2 className={`text-xl font-serif font-bold ${textColor}`}>旅伴管理</h2></div>
             <div className="overflow-y-auto px-6 pb-6 flex-1">
               <form id="companion-form" onSubmit={handleAddCompanion} className="space-y-5">
-                <div><label className="block text-xs font-bold text-[#888] mb-1.5 uppercase">新增成員</label><div className="flex gap-2"><input type="text" placeholder="名字..." value={newCompanionName} onChange={(e) => setNewCompanionName(e.target.value)} className={`flex-1 bg-[#F7F5F0] border ${theme.border} rounded-lg px-3 py-2.5 text-[#3A3A3A] text-base focus:outline-none focus:${theme.primaryBorder}`} /><button type="submit" className="bg-[#3A3A3A] text-white px-4 rounded-lg hover:opacity-90"><Plus size={20} /></button></div></div>
+                <div><label className={`block text-xs font-bold ${subTextColor} mb-1.5 uppercase`}>新增成員</label><div className="flex gap-2"><input type="text" placeholder="名字..." value={newCompanionName} onChange={(e) => setNewCompanionName(e.target.value)} className={`flex-1 ${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg px-3 py-2.5 ${textColor} text-base focus:outline-none focus:${theme.primaryBorder}`} /><button type="submit" className="bg-[#3A3A3A] text-white px-4 rounded-lg hover:opacity-90"><Plus size={20} /></button></div></div>
                 <div>
-                  <div className="flex justify-between items-end mb-1.5"><label className="block text-xs font-bold text-[#888] uppercase">目前成員</label>{companions.length > 0 && <button type="button" onClick={handleClearAllCompanions} className={`text-[10px] text-[#C55A5A] hover:${theme.dangerBg} px-2 py-1 rounded flex items-center gap-1`}><Trash2 size={12} />全刪</button>}</div>
-                  <div className={`bg-[#F7F5F0] border ${theme.border} rounded-lg p-2 space-y-2 max-h-48 overflow-y-auto`}>{companions.length === 0 ? <div className="text-center py-4 text-[#AAA] text-xs">無</div> : companions.map((c, i) => (<div key={`${c}-${i}`} className={`flex items-center justify-between p-2 bg-white rounded shadow-sm border ${theme.border}`}><div className="flex items-center gap-3 flex-1 min-w-0"><div className={`w-8 h-8 rounded-full ${getAvatarColor(i)} flex items-center justify-center text-[#3A3A3A] text-sm font-bold font-serif shadow-sm border border-white`}>{c.charAt(0).toUpperCase()}</div>{editingCompanionIndex === i ? <input type="text" value={editingCompanionName} onChange={(e) => setEditingCompanionName(e.target.value)} className={`flex-1 border-b ${theme.primaryBorder} outline-none text-base text-[#3A3A3A] py-0.5 font-serif`} autoFocus onBlur={() => saveEditCompanion(i)} onKeyDown={(e) => {if(e.key==='Enter'){e.preventDefault();saveEditCompanion(i)}}} /> : <span className={`text-sm font-bold text-[#3A3A3A] truncate cursor-pointer hover:${theme.primary} font-serif`} onClick={() => startEditCompanion(i, c)}>{c}</span>}</div><div className="flex gap-1 ml-2">{editingCompanionIndex === i ? <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => saveEditCompanion(i)} className={`${theme.primary} hover:${theme.hover} p-1.5 rounded`}><Check size={14} /></button> : <button type="button" onClick={() => handleRemoveCompanion(i)} className={`text-[#C55A5A] hover:${theme.dangerBg} p-1.5 rounded`}><Minus size={14} /></button>}</div></div>))}</div>
+                  <div className="flex justify-between items-end mb-1.5"><label className={`block text-xs font-bold ${subTextColor} uppercase`}>目前成員</label>{companions.length > 0 && <button type="button" onClick={handleClearAllCompanions} className={`text-[10px] text-[#C55A5A] hover:${theme.dangerBg} px-2 py-1 rounded flex items-center gap-1`}><Trash2 size={12} />全刪</button>}</div>
+                  <div className={`${theme.isDark ? 'bg-black/20' : 'bg-[#F7F5F0]'} border ${borderColor} rounded-lg p-2 space-y-2 max-h-48 overflow-y-auto`}>{companions.length === 0 ? <div className="text-center py-4 text-[#AAA] text-xs">無</div> : companions.map((c, i) => (<div key={`${c}-${i}`} className={`flex items-center justify-between p-2 ${theme.isDark ? 'bg-[#424242]' : 'bg-white'} rounded shadow-sm border ${borderColor}`}><div className="flex items-center gap-3 flex-1 min-w-0"><div className={`w-8 h-8 rounded-full ${getAvatarColor(i)} flex items-center justify-center text-white text-sm font-bold font-serif shadow-sm border border-white/20`}>{c.charAt(0).toUpperCase()}</div>{editingCompanionIndex === i ? <input type="text" value={editingCompanionName} onChange={(e) => setEditingCompanionName(e.target.value)} className={`flex-1 border-b ${theme.primaryBorder} outline-none text-base ${textColor} py-0.5 font-serif bg-transparent`} autoFocus onBlur={() => saveEditCompanion(i)} onKeyDown={(e) => {if(e.key==='Enter'){e.preventDefault();saveEditCompanion(i)}}} /> : <span className={`text-sm font-bold ${textColor} truncate cursor-pointer hover:${theme.primary} font-serif`} onClick={() => startEditCompanion(i, c)}>{c}</span>}</div><div className="flex gap-1 ml-2">{editingCompanionIndex === i ? <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => saveEditCompanion(i)} className={`${theme.primary} hover:${theme.hover} p-1.5 rounded`}><Check size={14} /></button> : <button type="button" onClick={() => handleRemoveCompanion(i)} className={`text-[#C55A5A] hover:${theme.dangerBg} p-1.5 rounded`}><Minus size={14} /></button>}</div></div>))}</div>
                 </div>
                 
-                {/* 增加提示 & 協作人員列表 (優化) */}
                 <div className="space-y-3">
                     <div className="flex justify-between items-center mt-6 mb-1">
-                        <label className="block text-xs font-bold text-[#888] uppercase">雲端協作人員</label>
+                        <label className={`block text-xs font-bold ${subTextColor} uppercase`}>雲端協作人員</label>
                         <button type="button" onClick={() => {setIsCompanionModalOpen(false); setIsShareModalOpen(true);}} className={`text-[10px] ${theme.primary} hover:underline flex items-center gap-1`}>
                             <UserPlus size={12}/> 邀請新成員
                         </button>
                     </div>
                     
-                    <div className="bg-[#F9F9F9] rounded-lg border border-[#EEE] divide-y divide-[#EEE]">
+                    <div className={`${theme.isDark ? 'bg-black/10' : 'bg-[#F9F9F9]'} rounded-lg border ${borderColor} divide-y divide-[#EEE]`}>
                         {isLoadingCollaborators ? (
-                            <div className="p-4 flex justify-center text-[#999] text-xs gap-2"><Loader2 size={14} className="animate-spin"/> 讀取權限中...</div>
+                            <div className={`p-4 flex justify-center ${subTextColor} text-xs gap-2`}><Loader2 size={14} className="animate-spin"/> 讀取權限中...</div>
                         ) : collaborators.length === 0 ? (
-                            <div className="p-4 text-center text-[#999] text-xs">暫無雲端協作人員</div>
+                            <div className={`p-4 text-center ${subTextColor} text-xs`}>暫無雲端協作人員</div>
                         ) : (
                             collaborators.map(user => {
-                                // 解析 UPN (例如 user@gmail.com -> user)
                                 const upn = user.emailAddress ? user.emailAddress.split('@')[0] : (user.displayName || 'Unknown');
                                 const isAdded = companions.includes(upn);
                                 
                                 return (
-                                    <div key={user.id} className="p-2 flex items-center justify-between group hover:bg-white transition-colors">
+                                    <div key={user.id} className={`p-2 flex items-center justify-between group hover:${theme.hover} transition-colors`}>
                                         <div className="flex items-center gap-2 min-w-0">
                                             {user.photoLink ? (
                                                 <img src={user.photoLink} alt={upn} className="w-8 h-8 rounded-full border border-white shadow-sm" />
@@ -2181,7 +2121,7 @@ const TripPlanner = ({
                                                 </div>
                                             )}
                                             <div className="min-w-0">
-                                                <div className="text-xs font-bold text-[#3A3A3A] truncate">{upn}</div>
+                                                <div className={`text-xs font-bold ${textColor} truncate`}>{upn}</div>
                                                 <div className="text-[10px] text-[#999] truncate flex items-center gap-1">
                                                     <Mail size={10}/> {user.emailAddress}
                                                 </div>
@@ -2209,7 +2149,6 @@ const TripPlanner = ({
                             })
                         )}
                     </div>
-                    {/* 協作狀態提示 */}
                     {collaborators.length > 0 && (
                         <div className="flex items-start gap-1.5 p-2 rounded bg-orange-50 text-[10px] text-orange-700 leading-relaxed border border-orange-100">
                             <UserCog size={14} className="shrink-0 mt-0.5"/>
@@ -2219,16 +2158,16 @@ const TripPlanner = ({
                 </div>
               </form>
             </div>
-            <div className={`p-4 border-t ${theme.border} bg-[#FDFCFB] shrink-0`}><button type="button" onClick={() => setIsCompanionModalOpen(false)} className={`w-full ${theme.primaryBg} text-white py-2.5 rounded-lg text-xs font-bold hover:opacity-90`}>完成</button></div>
+            <div className={`p-4 border-t ${borderColor} ${theme.isDark ? 'bg-black/20' : 'bg-[#FDFCFB]'} shrink-0`}><button type="button" onClick={() => setIsCompanionModalOpen(false)} className={`w-full ${theme.primaryBg} text-white py-2.5 rounded-lg text-xs font-bold hover:opacity-90`}>完成</button></div>
           </div>
         </div>
       )}
 
       {isCloudLoadModalOpen && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-[#3A3A3A]/20 backdrop-blur-[2px]">
-          <div className={`bg-[#FDFCFB] w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${theme.border} animate-in zoom-in-95`}>
-            <div className="p-6 border-b border-[#F0F0F0] flex justify-between items-center">
-                <h2 className="text-lg font-bold font-serif text-[#3A3A3A]">選擇雲端檔案</h2>
+          <div className={`${cardBg} w-full max-w-sm rounded-xl shadow-2xl flex flex-col max-h-[90vh] border ${borderColor} animate-in zoom-in-95`}>
+            <div className={`p-6 border-b ${borderColor} flex justify-between items-center`}>
+                <h2 className={`text-lg font-bold font-serif ${textColor}`}>選擇雲端檔案</h2>
                 <button onClick={() => setIsCloudLoadModalOpen(false)}><X size={20} className="text-[#999]" /></button>
             </div>
             <div className="p-2 overflow-y-auto flex-1">

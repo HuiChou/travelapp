@@ -7,28 +7,83 @@ import { generateNewProjectData, parseProjectDataFromGAPI } from './utils/helper
 export default function App() {
   const [currentView, setCurrentView] = useState('home'); 
   const [activeProject, setActiveProject] = useState(null);
-  // DEFAULT THEME SET TO MAGIC
-  const [currentThemeId, setCurrentThemeId] = useState('magic');
+  // DEFAULT THEME SET TO CHIHIRO
+  const [currentThemeId, setCurrentThemeId] = useState('chihiro');
   const [isImporting, setIsImporting] = useState(false);
   
+  // --- Global Styles for Spirited Away Animations ---
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      @keyframes float {
+        0%, 100% { transform: translateY(0px) rotate(0deg); }
+        50% { transform: translateY(-10px) rotate(2deg); }
+      }
+      @keyframes soot-run {
+        0% { transform: translateX(0) scale(1); }
+        10% { transform: translateX(5px) scale(0.9, 1.1); }
+        20% { transform: translateX(0) scale(1); }
+        100% { transform: translateX(0); }
+      }
+      @keyframes lantern-sway {
+        0%, 100% { transform: rotate(-3deg); }
+        50% { transform: rotate(3deg); }
+      }
+      @keyframes steam {
+        0% { opacity: 0; transform: translateY(0) scale(1); }
+        50% { opacity: 0.5; transform: translateY(-20px) scale(1.2); }
+        100% { opacity: 0; transform: translateY(-40px) scale(1.5); }
+      }
+      @keyframes haku-fly {
+        0% { transform: translateX(-100vw) translateY(20vh) rotate(5deg); opacity: 0; }
+        10% { opacity: 0.6; }
+        90% { opacity: 0.6; }
+        100% { transform: translateX(100vw) translateY(-20vh) rotate(-5deg); opacity: 0; }
+      }
+      @keyframes bounce-heads {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-15px); }
+      }
+      @keyframes no-face-fade {
+        0%, 100% { opacity: 0.1; transform: scale(0.95); }
+        50% { opacity: 0.3; transform: scale(1); }
+      }
+      .animate-float { animation: float 6s ease-in-out infinite; }
+      .animate-soot { animation: soot-run 2s ease-in-out infinite; }
+      .animate-lantern { animation: lantern-sway 4s ease-in-out infinite; }
+      .animate-steam { animation: steam 3s ease-out infinite; }
+      .animate-haku { animation: haku-fly 20s linear infinite; }
+      .animate-heads { animation: bounce-heads 2s ease-in-out infinite; }
+      .animate-noface { animation: no-face-fade 8s ease-in-out infinite; }
+      
+      /* Scrollbar Styling */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { bg: transparent; }
+      ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #999; }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
+
   // --- LocalStorage Logic ---
   const [projects, setProjects] = useState(() => {
     try {
       const savedProjects = localStorage.getItem('tripPlanner_projects');
-      return savedProjects ? JSON.parse(savedProjects) : [{ id: 1, name: '魔法之旅', lastModified: new Date().toISOString() }];
+      return savedProjects ? JSON.parse(savedProjects) : [{ id: 1, name: '神隱之旅', lastModified: new Date().toISOString() }];
     } catch (e) {
       console.error("Failed to load projects", e);
-      return [{ id: 1, name: '魔法之旅', lastModified: new Date().toISOString() }];
+      return [{ id: 1, name: '神隱之旅', lastModified: new Date().toISOString() }];
     }
   });
 
   const [allProjectsData, setAllProjectsData] = useState(() => {
     try {
       const savedData = localStorage.getItem('tripPlanner_allData');
-      return savedData ? JSON.parse(savedData) : { 1: generateNewProjectData('魔法之旅') };
+      return savedData ? JSON.parse(savedData) : { 1: generateNewProjectData('神隱之旅') };
     } catch (e) {
       console.error("Failed to load project data", e);
-      return { 1: generateNewProjectData('魔法之旅') };
+      return { 1: generateNewProjectData('神隱之旅') };
     }
   });
 
@@ -123,7 +178,7 @@ export default function App() {
       }
   };
 
-  // --- Cloud Import Logic (Optimized for copies) ---
+  // --- Cloud Import Logic ---
   const handleImportFromCloud = async () => {
     if (!googleUser || !gapiInited) {
         alert("請先登入 Google 帳號才能使用雲端匯入功能。");
@@ -134,7 +189,6 @@ export default function App() {
     let importedCount = 0;
 
     try {
-        // 1. Search for files
         const q = "name contains 'TravelApp_' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false";
         const response = await window.gapi.client.drive.files.list({
             q: q,
@@ -167,8 +221,6 @@ export default function App() {
             console.log(`Processing file: ${file.name} (${file.id})`);
 
             try {
-                // 3. Fetch content for new file
-                // FIXED: Expanded range for Expense to include Currency column (A:I)
                 const ranges = [
                     "專案概覽!A:B", "行程表!A:H", "費用!A:I", 
                     "管理類別!A:E", "行李!A:B", "購物!A:F", "美食!A:F", "景點!A:F"
@@ -180,10 +232,8 @@ export default function App() {
                     valueRenderOption: 'FORMATTED_VALUE'
                 });
 
-                // 4. Parse data using helper
                 const projectData = parseProjectDataFromGAPI(file.id, file.name, sheetRes.result.valueRanges);
                 
-                // 5. Create new Project ID locally
                 const currentMaxId = Math.max(
                     ...projects.map(p => p.id), 
                     ...newProjects.map(p => p.id), 
@@ -225,13 +275,13 @@ export default function App() {
     }
   };
 
-  // Get current Theme object (Defaults to Magic)
-  const theme = (THEMES && currentThemeId && THEMES[currentThemeId]) ? THEMES[currentThemeId] : THEMES.magic; 
+  // Get current Theme object (Defaults to Chihiro)
+  const theme = (THEMES && currentThemeId && THEMES[currentThemeId]) ? THEMES[currentThemeId] : THEMES.chihiro; 
 
   const handleOpenProject = (project) => {
     const pData = allProjectsData[project.id];
-    // Default to magic if no theme saved
-    const savedThemeId = pData?.themeId || 'magic';
+    // Default to chihiro if no theme saved
+    const savedThemeId = pData?.themeId || 'chihiro';
     setCurrentThemeId(savedThemeId);
     setActiveProject(project);
     setCurrentView('planner'); 
@@ -242,7 +292,7 @@ export default function App() {
   const handleAddProject = () => {
     const nextId = projects.length > 0 ? Math.max(...projects.map(p => p.id)) + 1 : 1;
     const displayNum = (projects.length + 1).toString().padStart(2, '0');
-    const newName = `魔法之旅 ${displayNum}`;
+    const newName = `神隱之旅 ${displayNum}`;
     const newProject = { id: nextId, name: newName, lastModified: new Date().toISOString() };
     setProjects([...projects, newProject]);
     setAllProjectsData(prev => ({ ...prev, [nextId]: generateNewProjectData(newName) }));
@@ -252,7 +302,6 @@ export default function App() {
     e.stopPropagation(); 
     if (!window.confirm("確定要刪除此行程嗎？\n(若已登入 Google，雲端備份檔也會一併刪除)")) return;
     
-    // Cloud Delete Logic
     if (googleUser && gapiInited) {
         const projectToDeleteData = allProjectsData[id];
         if (projectToDeleteData?.googleDriveFileId) {

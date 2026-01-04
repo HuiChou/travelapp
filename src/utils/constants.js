@@ -8,7 +8,8 @@ import {
   Ticket, Bus, Car, Ship, Music, Gamepad2, Gift, Shirt, Briefcase, 
   Smartphone, Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
   Cloud, CloudUpload, CloudDownload, LogIn, LogOut, CheckCircle2, RefreshCw, Printer,
-  Calendar, Tag, ChevronDown, Divide, Share2, Sparkles, Scroll, Feather
+  Calendar, Tag, ChevronDown, Divide, Share2, Sparkles, Scroll, Feather,
+  Ghost, Droplets, Flame, Hammer
 } from 'lucide-react';
 
 // --- Icon Registry ---
@@ -18,25 +19,24 @@ export const ICON_REGISTRY = {
   Tent, Music, Gamepad2, Gift, Shirt, Briefcase, Smartphone, 
   Laptop, Anchor, Umbrella, Sun, Moon, Star, Heart, Smile,
   Flower2, Luggage, Calculator, Wallet, Receipt, Star, 
-  Sparkles, Scroll, Feather
+  Sparkles, Scroll, Feather, Ghost, Droplets, Flame, Hammer
 };
 
 export const getIconComponent = (iconName) => ICON_REGISTRY[iconName] || Camera;
 
 // --- Google API ---
 export const GOOGLE_CLIENT_ID = "456137719976-dp4uin8ae10f332qbhqm447nllr2u4ec.apps.googleusercontent.com";
-
 export const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly";
 
 // --- Defaults ---
 export const DEFAULT_ITINERARY_CATEGORIES = [
-  { id: 'sightseeing', label: '景點', icon: 'Camera', color: 'bg-[#F2F4F1]' },
-  { id: 'food', label: '美食', icon: 'Utensils', color: 'bg-[#F7F0ED]' },
-  { id: 'cafe', label: '咖啡', icon: 'Coffee', color: 'bg-[#F4EDE6]' },
-  { id: 'transport', label: '交通', icon: 'Train', color: 'bg-[#EFF1F3]' },
-  { id: 'hotel', label: '住宿', icon: 'Hotel', color: 'bg-[#EEEFF2]' },
-  { id: 'shopping', label: '購物', icon: 'ShoppingBag', color: 'bg-[#F9F5F0]' },
-  { id: 'flight', label: '飛行', icon: 'Plane', color: 'bg-[#EFF4F7]' },
+  { id: 'sightseeing', label: '景點', icon: 'Camera', color: 'bg-[#A5D6A7]' }, // 千尋綠
+  { id: 'food', label: '美食', icon: 'Utensils', color: 'bg-[#EF9A9A]' }, // 湯屋紅
+  { id: 'cafe', label: '小憩', icon: 'Coffee', color: 'bg-[#BCAAA4]' }, // 鍋爐房褐
+  { id: 'transport', label: '交通', icon: 'Train', color: 'bg-[#90CAF9]' }, // 河神藍
+  { id: 'hotel', label: '住宿', icon: 'Hotel', color: 'bg-[#B39DDB]' }, // 無臉男紫
+  { id: 'shopping', label: '購物', icon: 'ShoppingBag', color: 'bg-[#FFF59D]' }, // 金子黃
+  { id: 'flight', label: '飛行', icon: 'Plane', color: 'bg-[#E0F7FA]' }, // 白龍風
 ];
 
 export const DEFAULT_EXPENSE_CATEGORIES = [
@@ -48,38 +48,34 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
   { id: 'other', label: '其他', icon: 'Coins' },
 ];
 
-// --- Magical & Vintage Category Colors ---
+// --- Spirited Away Category Colors (神隱少女配色) ---
 export const CATEGORY_COLORS = [
-  'bg-[#E3DAC9]', // Bone
-  'bg-[#D4C5A5]', // Parchment Dark
-  'bg-[#C0B283]', // Antique Gold
-  'bg-[#D8CAB8]', // Dust
-  'bg-[#E6D0CE]', // Faded Red
-  'bg-[#CED4DA]', // Silver
-  'bg-[#D1E8E2]', // Pale Magic
-  'bg-[#D4AF37]', // Gold
-  'bg-[#A8B6BF]', // Fog
-  'bg-[#BFA5A5]', // Dried Rose
-  'bg-[#9E9E9E]', // Stone
-  'bg-[#8FBC8F]', // Herbology
-  'bg-[#E0FFFF]', // Lumos
-  'bg-[#FFE4E1]', // Love Potion
+  'bg-[#A5D6A7]', // Chihiro Green (千尋綠)
+  'bg-[#F48FB1]', // Chihiro Pink (千尋粉)
+  'bg-[#EF9A9A]', // Bathhouse Red (湯屋紅)
+  'bg-[#FFCC80]', // Gold/Tokens (金幣/藥牌)
+  'bg-[#90CAF9]', // Haku Blue (白龍藍)
+  'bg-[#B39DDB]', // No Face Purple (無臉男紫)
+  'bg-[#80CBC4]', // River Teal (河神青)
+  'bg-[#BCAAA4]', // Kamaji Brown (鍋爐爺爺褐)
+  'bg-[#CFD8DC]', // Soot Grey (煤炭灰)
+  'bg-[#FFF59D]', // Star Candy Yellow (星星糖黃)
+  'bg-[#81D4FA]', // Water (水)
+  'bg-[#F5F5F5]', // Paper Bird White (紙人白)
 ];
 
-// --- Hogwarts House & Magic Avatar Colors ---
+// --- Avatar Colors (Frog & Characters) ---
 export const AVATAR_COLORS = [
-  'bg-[#740001]', // Gryffindor Red
-  'bg-[#1A472A]', // Slytherin Green
-  'bg-[#0E1A40]', // Ravenclaw Blue
-  'bg-[#ECB939]', // Hufflepuff Yellow
-  'bg-[#5D5D5D]', // Iron/Dark Grey
-  'bg-[#4A2E79]', // Deep Magic Purple
-  'bg-[#800020]', // Burgundy
-  'bg-[#2F4F4F]', // Dark Slate
-  'bg-[#B8860B]', // Dark Goldenrod
-  'bg-[#483C32]', // Taupe/Owl
-  'bg-[#380E38]', // Forbidden Forest Dark
-  'bg-[#5C0922]', // Crimson
+  'bg-[#66BB6A]', // Frog Green (青蛙綠)
+  'bg-[#EC407A]', // Chihiro Pink
+  'bg-[#42A5F5]', // Haku Blue
+  'bg-[#7E57C2]', // No Face Purple
+  'bg-[#FF7043]', // Yubaba Orange
+  'bg-[#26A69A]', // River Teal
+  'bg-[#5D4037]', // Kamaji Brown
+  'bg-[#78909C]', // Soot Grey
+  'bg-[#FFA726]', // Gold
+  'bg-[#AB47BC]', // Zeniba Purple
 ];
 
 export const COUNTRY_OPTIONS = [
@@ -91,125 +87,108 @@ export const COUNTRY_OPTIONS = [
   { code: 'UK', name: '英國', flag: '🇬🇧', currency: 'GBP', symbol: '£', defaultRate: 40.5 },
 ];
 
+// --- Spirited Away Themes (Updated with richer CSS variables if needed in future) ---
 export const THEMES = {
-  magic: { 
-    id: 'magic',
-    label: '魔法', 
-    bg: 'bg-[#F2E8C4]', // 羊皮紙色 (Parchment)
-    card: 'bg-[#FFFCF5]', // 象牙白紙張
-    primary: 'text-[#740001]', // 葛來分多深紅
-    primaryHex: '#740001',
-    primaryBg: 'bg-[#740001]',
-    primaryBorder: 'border-[#740001]',
-    accent: 'text-[#D4AF37]', // 金探子金
-    accentHex: '#D4AF37',
-    hover: 'hover:bg-[#E6DCC3]',
-    subText: 'text-[#5C5548]', // 墨水灰褐
-    border: 'border-[#C0B283]', // 古董金邊框
-    danger: 'text-[#8B0000]',
-    dangerBg: 'bg-[#FFE5E5]',
-    navActive: 'text-[#740001]',
-    navInactive: 'text-[#8C867A]',
-    selection: 'selection:bg-[#D4AF37] selection:text-[#2A2A2A]'
-  },
-  mori: { 
-    id: 'mori',
-    label: '森', 
-    bg: 'bg-[#F9F8F6]', 
+  chihiro: { 
+    id: 'chihiro',
+    label: '千尋 (Chihiro)', 
+    bg: 'bg-[#F1F8E9]', 
     card: 'bg-[#FFFFFF]',
-    primary: 'text-[#5F6F52]', 
-    primaryHex: '#5F6F52',
-    primaryBg: 'bg-[#5F6F52]',
-    primaryBorder: 'border-[#5F6F52]',
-    accent: 'text-[#A98467]', 
-    accentHex: '#A98467',
-    hover: 'hover:bg-[#F2F0EB]',
-    subText: 'text-[#888888]',
-    border: 'border-[#E6E2D3]',
-    danger: 'text-[#C55A5A]',
-    dangerBg: 'bg-[#FFF0F0]',
-    navActive: 'text-[#5F6F52]',
-    navInactive: 'text-[#A0A0A0]',
-    selection: 'selection:bg-[#D8D0C5] selection:text-[#464646]'
+    primary: 'text-[#388E3C]', 
+    primaryHex: '#388E3C',
+    primaryBg: 'bg-[#388E3C]',
+    primaryBorder: 'border-[#388E3C]',
+    accent: 'text-[#EC407A]',
+    accentHex: '#EC407A',
+    hover: 'hover:bg-[#DCEDC8]',
+    subText: 'text-[#689F38]',
+    border: 'border-[#C5E1A5]',
+    danger: 'text-[#D32F2F]',
+    dangerBg: 'bg-[#FFEBEE]',
+    navActive: 'text-[#388E3C]',
+    navInactive: 'text-[#9CCC65]',
+    selection: 'selection:bg-[#C5E1A5] selection:text-[#1B5E20]'
   },
-  umi: { 
-    id: 'umi',
-    label: '海', 
-    bg: 'bg-[#F0F6F9]', 
-    card: 'bg-[#FFFFFF]',
-    primary: 'text-[#4A7C96]', 
-    primaryHex: '#4A7C96',
-    primaryBg: 'bg-[#4A7C96]',
-    primaryBorder: 'border-[#4A7C96]',
-    accent: 'text-[#D48D56]', 
-    accentHex: '#D48D56',
-    hover: 'hover:bg-[#E6F0F5]',
-    subText: 'text-[#8899A6]',
-    border: 'border-[#DDE6EB]',
-    danger: 'text-[#D66D75]',
-    dangerBg: 'bg-[#FFF0F0]',
-    navActive: 'text-[#4A7C96]',
-    navInactive: 'text-[#A0B0C0]',
-    selection: 'selection:bg-[#CDE3EB] selection:text-[#2C4A5A]'
+  bathhouse: { 
+    id: 'bathhouse',
+    label: '湯屋 (Bathhouse)', 
+    bg: 'bg-[#FFF3E0]', // 稍微溫暖一點的背景，像木頭
+    card: 'bg-[#FFFBFA]', 
+    primary: 'text-[#D32F2F]', // 湯屋深紅
+    primaryHex: '#D32F2F',
+    primaryBg: 'bg-[#D32F2F]',
+    primaryBorder: 'border-[#D32F2F]',
+    accent: 'text-[#FFB300]', // 奢華金
+    accentHex: '#FFB300',
+    hover: 'hover:bg-[#FFCDD2]',
+    subText: 'text-[#B71C1C]',
+    border: 'border-[#EF9A9A]',
+    danger: 'text-[#C62828]',
+    dangerBg: 'bg-[#FFEBEE]',
+    navActive: 'text-[#D32F2F]',
+    navInactive: 'text-[#E57373]',
+    selection: 'selection:bg-[#FFCDD2] selection:text-[#880E4F]'
   },
-  sakura: { 
-    id: 'sakura',
-    label: '櫻', 
-    bg: 'bg-[#FFF5F7]', 
+  haku: { 
+    id: 'haku',
+    label: '河神 (Haku)', 
+    bg: 'bg-[#E0F7FA]', 
     card: 'bg-[#FFFFFF]',
-    primary: 'text-[#B06D85]', 
-    primaryHex: '#B06D85',
-    primaryBg: 'bg-[#B06D85]',
-    primaryBorder: 'border-[#B06D85]',
-    accent: 'text-[#9C8C74]', 
-    accentHex: '#9C8C74',
-    hover: 'hover:bg-[#FDF0F2]',
-    subText: 'text-[#998888]',
-    border: 'border-[#EBD6DA]',
-    danger: 'text-[#D9534F]',
-    dangerBg: 'bg-[#FFF0F0]',
-    navActive: 'text-[#B06D85]',
-    navInactive: 'text-[#C0A0A0]',
-    selection: 'selection:bg-[#FADCE3] selection:text-[#5A303C]'
+    primary: 'text-[#00838F]', 
+    primaryHex: '#00838F',
+    primaryBg: 'bg-[#00838F]',
+    primaryBorder: 'border-[#00838F]',
+    accent: 'text-[#00ACC1]',
+    accentHex: '#00ACC1',
+    hover: 'hover:bg-[#B2EBF2]',
+    subText: 'text-[#006064]',
+    border: 'border-[#80DEEA]',
+    danger: 'text-[#D32F2F]',
+    dangerBg: 'bg-[#FFEBEE]',
+    navActive: 'text-[#006064]',
+    navInactive: 'text-[#4DD0E1]',
+    selection: 'selection:bg-[#B2EBF2] selection:text-[#006064]'
   },
-  kouhi: { 
-    id: 'kouhi',
-    label: '咖啡', 
-    bg: 'bg-[#F7F3EF]', 
-    card: 'bg-[#FFFFFF]',
-    primary: 'text-[#8C6A5D]', 
-    primaryHex: '#8C6A5D',
-    primaryBg: 'bg-[#8C6A5D]',
-    primaryBorder: 'border-[#8C6A5D]',
-    accent: 'text-[#BC8F8F]', 
-    accentHex: '#BC8F8F',
-    hover: 'hover:bg-[#EBE5DE]',
-    subText: 'text-[#968C83]',
-    border: 'border-[#DBCCC2]',
-    danger: 'text-[#A94442]',
-    dangerBg: 'bg-[#FFF0F0]',
-    navActive: 'text-[#8C6A5D]',
-    navInactive: 'text-[#B0A69E]',
-    selection: 'selection:bg-[#E3D4CB] selection:text-[#4A3832]'
+  noface: { 
+    id: 'noface',
+    label: '無臉男 (No-Face)', 
+    bg: 'bg-[#212121]', 
+    card: 'bg-[#424242]', 
+    primary: 'text-[#E1BEE7]', 
+    primaryHex: '#E1BEE7',
+    primaryBg: 'bg-[#7B1FA2]', 
+    primaryBorder: 'border-[#7B1FA2]',
+    accent: 'text-[#FFCA28]', // 金子更亮一點
+    accentHex: '#FFCA28',
+    hover: 'hover:bg-[#616161]',
+    subText: 'text-[#BDBDBD]', 
+    border: 'border-[#616161]',
+    danger: 'text-[#EF9A9A]',
+    dangerBg: 'bg-[#424242]',
+    navActive: 'text-[#E1BEE7]',
+    navInactive: 'text-[#9E9E9E]',
+    selection: 'selection:bg-[#7B1FA2] selection:text-[#FFFFFF]',
+    isDark: true
   },
-  sumi: { 
-    id: 'sumi',
-    label: '墨', 
-    bg: 'bg-[#EAEAEA]', 
-    card: 'bg-[#FFFFFF]',
-    primary: 'text-[#404040]', 
-    primaryHex: '#404040',
-    primaryBg: 'bg-[#404040]',
-    primaryBorder: 'border-[#404040]',
-    accent: 'text-[#707070]', 
-    accentHex: '#707070',
-    hover: 'hover:bg-[#F0F0F0]',
-    subText: 'text-[#888888]',
-    border: 'border-[#CCCCCC]',
-    danger: 'text-[#555555]',
-    dangerBg: 'bg-[#E0E0E0]',
-    navActive: 'text-[#222222]',
-    navInactive: 'text-[#AAAAAA]',
-    selection: 'selection:bg-[#CCCCCC] selection:text-[#000000]'
+  kamaji: { 
+    id: 'kamaji',
+    label: '鍋爐爺爺 (Kamaji)', 
+    bg: 'bg-[#3E2723]', 
+    card: 'bg-[#4E342E]', 
+    primary: 'text-[#FFCC80]', 
+    primaryHex: '#FFCC80',
+    primaryBg: 'bg-[#E65100]', // 更深的爐火橘
+    primaryBorder: 'border-[#E65100]',
+    accent: 'text-[#A5D6A7]', // 藥草綠
+    accentHex: '#A5D6A7',
+    hover: 'hover:bg-[#5D4037]',
+    subText: 'text-[#D7CCC8]',
+    border: 'border-[#8D6E63]',
+    danger: 'text-[#FFAB91]',
+    dangerBg: 'bg-[#3E2723]',
+    navActive: 'text-[#FFCC80]',
+    navInactive: 'text-[#A1887F]',
+    selection: 'selection:bg-[#E65100] selection:text-[#FFFFFF]',
+    isDark: true
   }
 };
