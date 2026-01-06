@@ -1,6 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Users, User, ChevronDown, Map as MapIcon, List, Plus, Wallet, PieChart, Filter, Check, Calendar, Star, Utensils, Bus, ShoppingBag, Plane, Coffee, Home, Music, X, Share2, Loader2, Send } from 'lucide-react';
-import { getAvatarColor } from '../utils/helpers';
+
+// --- Internal Helper Definitions (解決路徑引用問題) ---
+
+const AVATAR_COLORS = [
+  'bg-red-400', 'bg-orange-400', 'bg-amber-400', 'bg-yellow-400', 'bg-lime-400',
+  'bg-green-400', 'bg-emerald-400', 'bg-teal-400', 'bg-cyan-400', 'bg-sky-400',
+  'bg-blue-400', 'bg-indigo-400', 'bg-violet-400', 'bg-purple-400', 'bg-fuchsia-400',
+  'bg-pink-400', 'bg-rose-400', 'bg-slate-400'
+];
+
+const getAvatarColor = (index) => {
+  if (index < 0 || index === undefined) return 'bg-[#E0E0E0]';
+  return AVATAR_COLORS[index % AVATAR_COLORS.length];
+};
 
 const ICON_MAP = {
   'Star': Star,
@@ -17,6 +30,173 @@ const ICON_MAP = {
 const getIconComponent = (iconName) => {
   return ICON_MAP[iconName] || Star;
 };
+
+// --- Premium Animated Icons (質感動畫圖示 - 循環動態版) ---
+
+// 行程：地圖與路徑 (路徑循環描繪)
+const ItineraryIcon = ({ active }) => (
+  <svg viewBox="0 0 100 100" className={`w-full h-full transition-all duration-500 ${active ? 'scale-110 drop-shadow-lg' : 'opacity-60 grayscale'}`}>
+    <defs>
+      <linearGradient id="mapGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#4FC3F7" />
+        <stop offset="100%" stopColor="#0288D1" />
+      </linearGradient>
+    </defs>
+    {/* 地圖摺頁背景 */}
+    <path d="M20,20 L40,30 L60,20 L80,30 L80,90 L60,80 L40,90 L20,80 Z" fill={active ? "url(#mapGradient)" : "#E0E0E0"} stroke={active ? "#0277BD" : "#BDBDBD"} strokeWidth="2" strokeLinejoin="round"/>
+    <path d="M40,30 L40,90 M60,20 L60,80" stroke={active ? "rgba(255,255,255,0.3)" : "#BDBDBD"} strokeWidth="1" />
+    
+    {/* 定位點與路徑動畫 */}
+    <g className={active ? "opacity-100" : "opacity-0 transition-opacity duration-300"}>
+       {/* 虛線路徑 (Dash Animation Loop) */}
+       <path d="M35,40 Q50,60 65,50" fill="none" stroke="white" strokeWidth="3" strokeDasharray="4 4" strokeLinecap="round">
+          {active && <animate attributeName="stroke-dashoffset" from="100" to="0" dur="1.5s" repeatCount="indefinite" />}
+       </path>
+       {/* 釘子跳動 (Loop) */}
+       <g>
+          <path d="M65,50 C65,50 65,35 65,35 C65,30 69,26 74,26 C79,26 83,30 83,35 C83,45 65,65 65,65" fill="#FF5252" stroke="#D32F2F" strokeWidth="1"/>
+          <circle cx="74" cy="35" r="3" fill="white"/>
+          {active && <animateTransform attributeName="transform" type="translate" values="0,0; 0,-5; 0,0" dur="1s" repeatCount="indefinite" />}
+       </g>
+       <circle cx="35" cy="40" r="4" fill="white" stroke="#0277BD" strokeWidth="2" />
+    </g>
+  </svg>
+);
+
+// 清單：打勾板 (板子搖擺 + 循環打勾)
+const ChecklistIcon = ({ active }) => (
+  <svg viewBox="0 0 100 100" className={`w-full h-full transition-all duration-500 ${active ? 'scale-110 drop-shadow-lg' : 'opacity-60 grayscale'}`}>
+    <defs>
+      <linearGradient id="listGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stopColor="#FFCC80" />
+        <stop offset="100%" stopColor="#FF9800" />
+      </linearGradient>
+    </defs>
+    
+    {/* 整個板子群組 (搖擺動畫) */}
+    <g>
+        {active && <animateTransform attributeName="transform" type="rotate" values="-2 50 10; 2 50 10; -2 50 10" dur="3s" repeatCount="indefinite" />}
+        
+        {/* 寫字板 */}
+        <rect x="20" y="15" width="60" height="80" rx="6" fill={active ? "white" : "#F5F5F5"} stroke={active ? "#FFA000" : "#BDBDBD"} strokeWidth="2" />
+        <path d="M20,25 L80,25" stroke={active ? "#FFECB3" : "#E0E0E0"} strokeWidth="1" />
+        
+        {/* 夾子 */}
+        <rect x="35" y="10" width="30" height="10" rx="2" fill={active ? "url(#listGradient)" : "#9E9E9E"} />
+        
+        {/* 項目線條 */}
+        <line x1="35" y1="40" x2="70" y2="40" stroke="#E0E0E0" strokeWidth="4" strokeLinecap="round" />
+        <line x1="35" y1="60" x2="70" y2="60" stroke="#E0E0E0" strokeWidth="4" strokeLinecap="round" />
+        <line x1="35" y1="80" x2="60" y2="80" stroke="#E0E0E0" strokeWidth="4" strokeLinecap="round" />
+
+        {/* 打勾動畫 (循環) */}
+        <g className={active ? "opacity-100" : "opacity-0"}>
+           <path d="M25,38 L30,43 L40,33" fill="none" stroke="#4CAF50" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+               {active && <animate attributeName="stroke-dasharray" values="0,100; 30,100; 30,100; 0,100" dur="2s" repeatCount="indefinite" />}
+           </path>
+           <path d="M25,58 L30,63 L40,53" fill="none" stroke="#4CAF50" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+               {active && <animate attributeName="stroke-dasharray" values="0,100; 30,100; 30,100; 0,100" dur="2s" begin="0.5s" repeatCount="indefinite" />}
+           </path>
+        </g>
+    </g>
+  </svg>
+);
+
+// 新增：動態按鈕 (流光寶石質感 - 循環)
+const AddIcon = ({ active }) => (
+  <svg viewBox="0 0 100 100" className={`w-full h-full ${active ? 'scale-110' : ''}`}>
+     <defs>
+        <linearGradient id="gemGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+           <stop offset="0%" stopColor="#EC407A">
+             <animate attributeName="stop-color" values="#EC407A; #AB47BC; #EC407A" dur="4s" repeatCount="indefinite" />
+           </stop>
+           <stop offset="100%" stopColor="#7B1FA2">
+             <animate attributeName="stop-color" values="#7B1FA2; #5C6BC0; #7B1FA2" dur="4s" repeatCount="indefinite" />
+           </stop>
+        </linearGradient>
+        <filter id="gemGlow">
+           <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+           <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+     </defs>
+     
+     {/* 外圈光環 (Pulse Loop) */}
+     <circle cx="50" cy="50" r="45" fill="none" stroke="url(#gemGradient)" strokeWidth="1.5" opacity="0.6">
+        <animate attributeName="r" values="38;48;38" dur="3s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.8;0;0.8" dur="3s" repeatCount="indefinite" />
+     </circle>
+
+     {/* 寶石本體 */}
+     <circle cx="50" cy="50" r="38" fill="url(#gemGradient)" filter="url(#gemGlow)" className="drop-shadow-2xl" />
+     
+     {/* 內部高光 */}
+     <ellipse cx="50" cy="35" rx="25" ry="12" fill="white" opacity="0.25" />
+     <circle cx="65" cy="65" r="5" fill="white" opacity="0.1" />
+
+     {/* 加號 */}
+     <path d="M50,30 L50,70 M30,50 L70,50" stroke="white" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-md" />
+  </svg>
+);
+
+// 費用：錢包 (循環跳出的金幣)
+const ExpensesIcon = ({ active }) => (
+  <svg viewBox="0 0 100 100" className={`w-full h-full transition-all duration-500 ${active ? 'scale-110 drop-shadow-lg' : 'opacity-60 grayscale'}`}>
+    <defs>
+        <linearGradient id="walletGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#A5D6A7" />
+            <stop offset="100%" stopColor="#388E3C" />
+        </linearGradient>
+    </defs>
+    {/* 後層鈔票 */}
+    <rect x="25" y="25" width="50" height="30" rx="2" fill="#81C784" stroke="#2E7D32" strokeWidth="1" transform="rotate(-10 50 50)" />
+    
+    {/* 錢包本體 (輕微擠壓動畫) */}
+    <path d="M20,40 Q20,30 30,30 L70,30 Q80,30 80,40 L80,80 Q80,90 70,90 L30,90 Q20,90 20,80 Z" fill={active ? "url(#walletGradient)" : "#E0E0E0"} stroke={active ? "#1B5E20" : "#BDBDBD"} strokeWidth="2" />
+    <path d="M20,50 L80,50" stroke="rgba(0,0,0,0.1)" strokeWidth="1"/>
+
+    {/* 金幣跳動動畫 (循環) */}
+    <g className={active ? "opacity-100" : "opacity-0"}>
+        <circle cx="50" cy="20" r="10" fill="#FFD54F" stroke="#F57F17" strokeWidth="1">
+            {active && <animate attributeName="cy" values="40;15;40" dur="1.2s" repeatCount="indefinite" />}
+            {active && <animate attributeName="r" values="10;11;10" dur="1.2s" repeatCount="indefinite" />}
+        </circle>
+        <text x="50" y="24" fontSize="12" textAnchor="middle" fill="#E65100" fontWeight="bold">
+            {active && <animate attributeName="y" values="44;19;44" dur="1.2s" repeatCount="indefinite" />}
+            $
+        </text>
+    </g>
+  </svg>
+);
+
+// 統計：圓餅圖 (循環數據浮動)
+const StatisticsIcon = ({ active }) => (
+  <svg viewBox="0 0 100 100" className={`w-full h-full transition-all duration-500 ${active ? 'scale-110 drop-shadow-lg' : 'opacity-60 grayscale'}`}>
+    {/* 圓餅背景 */}
+    <circle cx="50" cy="50" r="35" fill="#F5F5F5" stroke="#E0E0E0" strokeWidth="10" />
+    
+    {/* 動態區塊 1 (旋轉) */}
+    <circle cx="50" cy="50" r="35" fill="none" stroke="#BA68C8" strokeWidth="10" strokeDasharray="60 220" strokeDashoffset="25" className="origin-center -rotate-90">
+         {active && <animate attributeName="stroke-dasharray" values="60 220; 80 220; 60 220" dur="3s" repeatCount="indefinite" />}
+    </circle>
+    
+    {/* 動態區塊 2 (旋轉) */}
+    <circle cx="50" cy="50" r="35" fill="none" stroke="#4DD0E1" strokeWidth="10" strokeDasharray="100 220" strokeDashoffset="-35" className="origin-center -rotate-90">
+         {active && <animate attributeName="stroke-dasharray" values="100 220; 120 220; 100 220" dur="4s" repeatCount="indefinite" />}
+    </circle>
+
+    {/* 中心數據 (Bar Chart Loop Animation) */}
+    <circle cx="50" cy="50" r="20" fill="white" className="drop-shadow-sm" />
+    <rect x="42" y="42" width="6" height="16" rx="1" fill={active ? "#BA68C8" : "#BDBDBD"}>
+         {active && <animate attributeName="height" values="16; 24; 10; 16" dur="1.5s" repeatCount="indefinite" />}
+         {active && <animate attributeName="y" values="42; 34; 48; 42" dur="1.5s" repeatCount="indefinite" />}
+    </rect>
+    <rect x="52" y="35" width="6" height="23" rx="1" fill={active ? "#4DD0E1" : "#BDBDBD"}>
+         {active && <animate attributeName="height" values="23; 10; 25; 23" dur="2s" repeatCount="indefinite" />}
+         {active && <animate attributeName="y" values="35; 48; 33; 35" dur="2s" repeatCount="indefinite" />}
+    </rect>
+  </svg>
+);
+
 
 // --- Components ---
 
@@ -365,32 +545,66 @@ export const ShareModal = ({ isOpen, onClose, onInvite, isInviting, theme }) => 
   );
 };
 
-export const BottomNav = ({ theme, viewMode, setViewMode, openAddModal }) => (
-  <div className={`fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-[#EAEAEA] pb-safe pt-2 px-4 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]`}>
-     <div className="grid grid-cols-5 items-center h-14 pb-1">
-        <button onClick={() => setViewMode('itinerary')} className={`flex flex-col items-center gap-1 transition-colors ${viewMode === 'itinerary' ? 'text-[#A98467]' : 'text-[#999]'}`}>
-          <MapIcon size={22} strokeWidth={viewMode === 'itinerary' ? 2.5 : 2} />
-          <span className="text-[10px] font-bold tracking-widest">行程</span>
-        </button>
-        <button onClick={() => setViewMode('checklist')} className={`flex flex-col items-center gap-1 transition-colors ${viewMode === 'checklist' ? 'text-[#A98467]' : 'text-[#999]'}`}>
-          <List size={24} strokeWidth={viewMode === 'checklist' ? 2.5 : 2} />
-          <span className="text-[10px] font-bold tracking-widest">清單</span>
-        </button>
-        <div className="flex justify-center items-center h-full relative">
-          {viewMode !== 'categoryManager' && (
-            <button onClick={openAddModal} className={`absolute -top-5 w-14 h-14 bg-[#3A3A3A] text-[#F9F8F6] rounded-full shadow-xl shadow-[#3A3A3A]/20 hover:scale-105 active:scale-95 transition-all flex items-center justify-center z-50`}>
-              <Plus size={28} strokeWidth={2} />
-            </button>
-          )}
-        </div>
-        <button onClick={() => setViewMode('expenses')} className={`flex flex-col items-center gap-1 transition-colors ${viewMode === 'expenses' ? 'text-[#A98467]' : 'text-[#999]'}`}>
-          <Wallet size={22} strokeWidth={viewMode === 'expenses' ? 2.5 : 2} />
-          <span className="text-[10px] font-bold tracking-widest">費用</span>
-        </button>
-        <button onClick={() => setViewMode('statistics')} className={`flex flex-col items-center gap-1 transition-colors ${viewMode === 'statistics' ? 'text-[#A98467]' : 'text-[#999]'}`}>
-          <PieChart size={22} strokeWidth={viewMode === 'statistics' ? 2.5 : 2} />
-          <span className="text-[10px] font-bold tracking-widest">統計</span>
-        </button>
-     </div>
-  </div>
-);
+// --- Modified Bottom Navigation with Premium Animated Icons (Floating Style + Micro-Invisible Background) ---
+export const BottomNav = ({ theme, viewMode, setViewMode, openAddModal }) => {
+  // 根據主題是否為深色模式，決定微隱形背景的漸層顏色
+  const isDark = theme?.isDark;
+  const gradientClass = isDark 
+    ? "from-[#212121]/90 via-[#212121]/50" 
+    : "from-[#FDFCFB]/90 via-[#FDFCFB]/50";
+
+  return (
+    // 增加背景漸層與模糊，達成「微隱形」效果 (pointer-events-none 讓點擊穿透空白處)
+    <div className={`fixed bottom-0 left-0 right-0 z-40 pb-safe pt-12 px-2 pointer-events-none bg-gradient-to-t ${gradientClass} to-transparent backdrop-blur-[2px]`}>
+       {/* 調整 max-w-6xl 讓間距更寬，h-24 讓高度能容納特大 Icon */}
+       <div className="flex justify-between items-end h-24 pb-3 pointer-events-auto max-w-6xl mx-auto px-8">
+          {/* 行程 */}
+          <button onClick={() => setViewMode('itinerary')} className={`group flex flex-col items-center gap-1.5 transition-all duration-300 w-20 hover:-translate-y-1`}>
+            <div className="w-10 h-10 relative">
+               <ItineraryIcon active={viewMode === 'itinerary'} />
+            </div>
+            <span className={`text-[11px] font-bold tracking-widest ${viewMode === 'itinerary' ? 'text-[#0288D1] drop-shadow-sm scale-110' : 'text-[#888] opacity-60'} transition-all`}>行程</span>
+          </button>
+  
+          {/* 清單 */}
+          <button onClick={() => setViewMode('checklist')} className={`group flex flex-col items-center gap-1.5 transition-all duration-300 w-20 hover:-translate-y-1`}>
+            <div className="w-10 h-10 relative">
+               <ChecklistIcon active={viewMode === 'checklist'} />
+            </div>
+            <span className={`text-[11px] font-bold tracking-widest ${viewMode === 'checklist' ? 'text-[#FF9800] drop-shadow-sm scale-110' : 'text-[#888] opacity-60'} transition-all`}>清單</span>
+          </button>
+  
+          {/* 新增 - 浮動超大按鈕 (流光寶石) */}
+          <div className="flex justify-center items-center relative -top-6">
+            {viewMode !== 'categoryManager' && (
+              <button 
+                onClick={openAddModal} 
+                className={`w-20 h-20 rounded-full shadow-[0_10px_25px_-5px_rgba(123,31,162,0.5)] hover:scale-105 active:scale-95 transition-all flex items-center justify-center z-50 overflow-hidden relative group`}
+                title="新增項目"
+              >
+                <div className="relative w-full h-full p-2">
+                   <AddIcon active={true} />
+                </div>
+              </button>
+            )}
+          </div>
+  
+          {/* 費用 */}
+          <button onClick={() => setViewMode('expenses')} className={`group flex flex-col items-center gap-1.5 transition-all duration-300 w-20 hover:-translate-y-1`}>
+            <div className="w-10 h-10 relative">
+               <ExpensesIcon active={viewMode === 'expenses'} />
+            </div>
+            <span className={`text-[11px] font-bold tracking-widest ${viewMode === 'expenses' ? 'text-[#388E3C] drop-shadow-sm scale-110' : 'text-[#888] opacity-60'} transition-all`}>費用</span>
+          </button>
+  
+          {/* 統計 */}
+          <button onClick={() => setViewMode('statistics')} className={`group flex flex-col items-center gap-1.5 transition-all duration-300 w-20 hover:-translate-y-1`}>
+            <div className="w-10 h-10 relative">
+               <StatisticsIcon active={viewMode === 'statistics'} />
+            </div>
+            <span className={`text-[11px] font-bold tracking-widest ${viewMode === 'statistics' ? 'text-[#7B1FA2] drop-shadow-sm scale-110' : 'text-[#888] opacity-60'} transition-all`}>統計</span>
+          </button>
+       </div>
+    </div>
+  );
+};
